@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Cinzel', 'Noto Serif JP', Georgia, serif;
+    --font-body: 'Noto Serif JP', Georgia, serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: #09080c;
+    color: #ece6da;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    user-select: none;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes floatUpFade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.85);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -10px) scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -56px) scale(0.95);
+  }
+}
+
+@keyframes screenShake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  15% { transform: translate3d(-8px, 6px, 0); }
+  30% { transform: translate3d(8px, -6px, 0); }
+  45% { transform: translate3d(-6px, -4px, 0); }
+  60% { transform: translate3d(5px, 4px, 0); }
+  75% { transform: translate3d(-3px, 2px, 0); }
+}
+
+@keyframes bannerSlam {
+  0% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-float-up {
+  animation: floatUpFade 1.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-screen-shake {
+  animation: screenShake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+.animate-banner-slam {
+  animation: bannerSlam 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom gothic scrollbar for modals */
+.gothic-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.gothic-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 13, 19, 0.8);
+}
+.gothic-scroll::-webkit-scrollbar-thumb {
+  background: rgba(180, 140, 72, 0.4);
+  border-radius: 3px;
+}
+.gothic-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 168, 83, 0.7);
+}

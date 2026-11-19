@@ -1,0 +1,6 @@
+{
+  "name": "Soul Scale — 死神の精密天秤",
+  "description": "真鍮の精密天秤で魂と罪を計量するゴシック・ローグライトゲーム",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
