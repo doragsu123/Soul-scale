@@ -18,7 +18,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0,
     price: 100,
     rarity: 'common',
-    effectDesc: '特殊なし',
+    effectDesc: '',
   },
   w_cast: {
     id: 'w_cast',
@@ -28,7 +28,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0,
     price: 100,
     rarity: 'common',
-    effectDesc: '特殊なし',
+    effectDesc: '',
   },
   w_iron: {
     id: 'w_iron',
@@ -38,7 +38,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0,
     price: 110,
     rarity: 'common',
-    effectDesc: '特殊なし',
+    effectDesc: '',
   },
   w_copper: {
     id: 'w_copper',
@@ -48,7 +48,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0.2,
     price: 140,
     rarity: 'common',
-    effectDesc: '特殊なし',
+    effectDesc: '',
   },
   w_feather: {
     id: 'w_feather',
@@ -58,7 +58,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0.5,
     price: 200,
     rarity: 'uncommon',
-    effectDesc: '超軽量。100%調整とSin底上げの要',
+    effectDesc: 'ごく軽い調整用の羽根。罪の倍率も大きく底上げする。',
   },
   w_fallen: {
     id: 'w_fallen',
@@ -68,7 +68,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0.4,
     price: 220,
     rarity: 'uncommon',
-    effectDesc: '皿を押し上げる。OVERLOAD切り返しの基本',
+    effectDesc: '皿を5g押し上げる。超過時の切り返しに重宝する。',
   },
   w_helium: {
     id: 'w_helium',
@@ -78,7 +78,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0.8,
     price: 320,
     rarity: 'rare',
-    effectDesc: '大きく皿を押し上げる最強の切り札',
+    effectDesc: '皿を10g押し上げる強力な切り札。罪の加算も高い。',
   },
   w_gold: {
     id: 'w_gold',
@@ -88,7 +88,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0,
     price: 300,
     rarity: 'rare',
-    effectDesc: 'ON_SCORE: 水平率95%以上かつ Current <= Target なら、その時点の合計Sin倍率を ×1.8',
+    effectDesc: '精算時、達成率95%以上かつ超過していなければ罪倍率を ×1.8 にする。',
   },
   w_crystal: {
     id: 'w_crystal',
@@ -98,7 +98,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0,
     price: 280,
     rarity: 'uncommon',
-    effectDesc: 'ON_SCORE: 右皿にある「現在の重さが10g」のおもり（自身含む）1個につき、合計Sin倍率を ×1.3',
+    effectDesc: '精算時、右皿にある「現在の重さが10g」の分銅1個につき罪倍率 ×1.3。',
   },
   w_mirror: {
     id: 'w_mirror',
@@ -108,7 +108,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0,
     price: 340,
     rarity: 'rare',
-    effectDesc: 'ON_SCORE: 右皿の左隣（index - 1）のおもりのスコア効果を再発動（※左隣も鏡の分銅の場合は基礎値のみ再発動）',
+    effectDesc: '精算時、左隣の分銅がもう一度働く（左隣も鏡の分銅なら基本値のみ）。',
   },
   w_twin: {
     id: 'w_twin',
@@ -118,7 +118,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0.3,
     price: 260,
     rarity: 'uncommon',
-    effectDesc: 'ON_DROP: 乗せた直後、同じコピーをもう1個（コピー側はON_DROP無効）末尾に落とす',
+    effectDesc: '置いた直後、同じ重さ・価値の影分銅をもう1個末尾に落とす。',
   },
   w_mercury: {
     id: 'w_mercury',
@@ -128,7 +128,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0.5,
     price: 250,
     rarity: 'uncommon',
-    effectDesc: 'ON_DROP: 手札上では10〜20gで高速振動し、落下時に10〜20の整数が確定。確定重さ×5をSoulに追加',
+    effectDesc: '置く瞬間に10〜20gで重さが決まり、決まった重さ×5を魂に加える。',
   },
   w_slime: {
     id: 'w_slime',
@@ -138,7 +138,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0.2,
     price: 270,
     rarity: 'rare',
-    effectDesc: 'PASSIVE: このおもりより後に新しいおもりが乗るたび（コピー含む）、自身の重さ +5g、Soul +30、Sin +0.2 成長',
+    effectDesc: 'この後に別の分銅が乗るたび、自身の重さ+5g・魂+30・罪+0.2ずつ育つ。',
   },
   w_soul: {
     id: 'w_soul',
@@ -148,7 +148,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0.4,
     price: 260,
     rarity: 'uncommon',
-    effectDesc: 'ON_DROP: 左皿のTargetを +15g 増やす（OVERLOAD脱出可）',
+    effectDesc: '置くと左皿の目標も +15g 増える。自重と相殺されるため超過そのものは減らない。',
   },
   w_crown: {
     id: 'w_crown',
@@ -158,7 +158,7 @@ export const WEIGHT_DATABASE: Record<WeightId, WeightDefinition> = {
     sinBonus: 0,
     price: 320,
     rarity: 'rare',
-    effectDesc: 'ON_SCORE: 右皿の一番右（末尾）にあるなら、最終の水平精度倍率に +3.0',
+    effectDesc: '精算時、右皿の一番右に置かれているなら水平倍率に +3.0 を加える。',
   },
 };
 
@@ -169,25 +169,25 @@ export const TOOL_DATABASE: Record<ToolId, ToolDefinition> = {
     id: 't_glass',
     name: '死神の虫眼鏡',
     price: 140,
-    effectDesc: 'このTrial中、袋の次の5個の正確な順番と重さを透視表示。',
+    effectDesc: 'この審判中、袋の次の5個の順番と重さを見通せる。',
   },
   t_tweezers: {
     id: 't_tweezers',
     name: '真鍮のピンセット',
     price: 180,
-    effectDesc: '選択モードに入り、右皿の任意のおもり1個を手札に戻す（OVERLOAD時も使用可）。',
+    effectDesc: '右皿のおもり1個を手札に戻す（超過猶予中でも使える）。',
   },
   t_file: {
     id: 't_file',
     name: '魔法のヤスリ',
     price: 160,
-    effectDesc: '選択モードに入り、手札のおもり1つの重さを半分にし、SoulとSin加算値を永続で2倍にする。',
+    effectDesc: '手札のおもり1個の重さを半分にし、魂と罪の値を永続で2倍にする。',
   },
   t_glue: {
     id: 't_glue',
     name: '悪魔の接着剤',
     price: 150,
-    effectDesc: '次の1個のおもりを乗せた手番に限り、バーストおよびOVERLOAD判定を強制無効化して耐える。',
+    effectDesc: '次の1個を置いたときに限り、目標を超えても斬首・超過猶予に入らず耐える。',
   },
 };
 
@@ -198,37 +198,37 @@ export const RELIC_DATABASE: Record<RelicId, RelicDefinition> = {
     id: 'r_fulcrum',
     name: '錆びた支点',
     price: 420,
-    effectDesc: 'OVERLOAD許容超過が 15g → 25g、発動上限が1Trialにつき 2回 に増加。',
+    effectDesc: '超過猶予の上限が 15g → 25g に広がり、1審判につき 2回まで耐えられる。',
   },
   r_pendulum: {
     id: 'r_pendulum',
     name: '振り子の魔術',
     price: 450,
-    effectDesc: 'バネ振動の反発を強化し、落下時のバウンドごとに Soul +15 を加算＋ポップアップ表示。',
+    effectDesc: '天秤の揺れが大きくなり、投入時の反発回数に応じて魂が +15 ずつ加算される。',
   },
   r_miracle: {
     id: 'r_miracle',
     name: '奇跡の刻印',
     price: 520,
-    effectDesc: '完全水平（誤差0g）達成時、CASH_OUT のおもり連鎖計算を 2回発動。',
+    effectDesc: '完全水平（誤差0g）で精算すると、右皿のおもりの効果が 2回連続で働く。',
   },
   r_zero: {
     id: 'r_zero',
     name: '無重力の祝福',
     price: 400,
-    effectDesc: '確定時に右皿にマイナス重量のおもりがある場合、そのTrialの「1g以下／マイナス重量」のおもりのSin加算値が 2倍。',
+    effectDesc: '精算時に右皿へマイナスの重さが乗っていれば、1g以下のおもりの罪加算が 2倍になる。',
   },
   r_altar: {
     id: 'r_altar',
     name: '供物の祭壇',
     price: 380,
-    effectDesc: 'Discard上限が 2回 → 4回 に増え、捨てたおもりのSoul値が 2倍 になって sacrificeSoul に加算される。',
+    effectDesc: '供物回数が 2回 → 4回 に増え、捧げたおもりの魂を 2倍 で蓄積できる。',
   },
   r_scale: {
     id: 'r_scale',
     name: '精密な目盛り',
     price: 460,
-    effectDesc: '手札トレイの最大数が 3個 → 4個 に増加。',
+    effectDesc: '手札トレイの上限が 3個 → 4個 に増える。',
   },
 };
 
@@ -302,9 +302,14 @@ export function getQuotaForDay(day: number): number {
   return quota;
 }
 
-export function getTargetForTrial(day: number): number {
-  if (day <= 1) {
-    return 80 + Math.floor(Math.random() * 41); // 80..120
+export function getTargetForTrial(day: number, trial = 1): number {
+  if (day === 1) {
+    // Trial 1: fixed 100g to teach Miracle Balance (last 5g copper coin!)
+    if (trial === 1) return 100;
+    // Trial 2: fixed 93g (mod 5 === 3, impossible with initial deck) to teach cashing out early!
+    if (trial === 2) return 93;
+    // Trial 3: achievable 85..110g multiple of 5 or +1/+2
+    return 95;
   }
   if (day === 2) {
     return 100 + Math.floor(Math.random() * 51); // 100..150
@@ -312,4 +317,35 @@ export function getTargetForTrial(day: number): number {
   const min = 100 + (day - 2) * 20;
   const max = 150 + (day - 2) * 30;
   return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+/**
+ * Arranges Day 1 Trial 1 opening draw order so the player holds a 5g copper coin
+ * and draws clean weights up to 95g -> 100g Miracle Balance on their very first Trial.
+ */
+export function orderDay1Trial1Deck(deck: WeightInstance[]): WeightInstance[] {
+  const desiredPrefix: WeightId[] = [
+    'w_lead',   // 20
+    'w_lead',   // 20
+    'w_copper', // 5 (kept in hand or played last!)
+    'w_lead',   // 20
+    'w_cast',   // 15
+    'w_cast',   // 15
+    'w_iron',   // 10
+    'w_copper', // 5
+  ];
+  const pool = [...deck];
+  const head: WeightInstance[] = [];
+  for (const id of desiredPrefix) {
+    const idx = pool.findIndex((w) => w.defId === id);
+    if (idx !== -1) {
+      head.push(pool[idx]);
+      pool.splice(idx, 1);
+    }
+  }
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return [...head, ...pool];
 }

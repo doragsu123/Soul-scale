@@ -13,12 +13,11 @@ export const RulesModal: React.FC<RulesModalProps> = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
       <div className="w-full max-w-4xl max-h-[90vh] flex flex-col bg-[#110e15] border border-amber-700/60 shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-stone-800 bg-[#17121c]">
           <div className="flex items-center gap-2.5">
             <BookOpen className="w-5 h-5 text-amber-400" />
             <h2 className="font-display text-lg sm:text-xl font-bold text-amber-200 tracking-wider">
-              死神の法典 — CODEX & RULES
+              死神の法典
             </h2>
           </div>
           <button
@@ -31,7 +30,6 @@ export const RulesModal: React.FC<RulesModalProps> = ({ onClose }) => {
           </button>
         </div>
 
-        {/* Navigation Tabs */}
         <div className="flex items-center gap-2 px-5 py-2.5 border-b border-stone-800 bg-[#141019]">
           <button
             type="button"
@@ -42,7 +40,7 @@ export const RulesModal: React.FC<RulesModalProps> = ({ onClose }) => {
                 : 'bg-[#1c1722] text-stone-400 hover:text-stone-200'
             }`}
           >
-            計量法・計算式
+            計量法と計算式
           </button>
           <button
             type="button"
@@ -68,25 +66,24 @@ export const RulesModal: React.FC<RulesModalProps> = ({ onClose }) => {
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-5 overflow-y-auto gothic-scroll space-y-5 text-sm text-stone-200">
           {tab === 'rules' && (
             <>
               <div className="p-4 bg-[#18131f] border border-amber-700/40">
                 <h3 className="font-bold text-amber-300 mb-2">
-                  1. 2軸スコア計算式（Soul × Sin × 水平精度倍率）
+                  1. 報酬の決まり方（魂 × 罪倍率 × 水平倍率）
                 </h3>
                 <p className="font-mono-num text-base font-bold text-amber-100 bg-[#0d0a11] px-3 py-2 border border-stone-800">
-                  獲得コイン = Math.floor( Total Soul × Total Sin倍率 × 水平精度倍率 )
+                  獲得コイン = 合計の魂 × 罪倍率 × 水平倍率（端数切捨て）
                 </p>
                 <p className="text-xs text-stone-300 mt-2.5 leading-relaxed">
-                  計量確定（WEIGH & JUDGE）時、右皿のおもりを<strong className="text-amber-200">左から右へ順番に</strong>評価し、Soul（魂値）と Sin倍率（初期1.0）を加算・乗算します。おもり配置の順番（鏡の分銅・狂王の冠など）が極めて重要です。
+                  手を引くボタンを押すと、右皿のおもりが<strong className="text-amber-200">左から順番に</strong>働き、魂の合計と罪倍率（初期値 1.0）が積み上がります。左隣を再発動する「鏡の分銅」や末尾で輝く「狂王の冠」など、置く順番が報酬を大きく左右します。
                 </p>
               </div>
 
               <div className="p-4 bg-[#17131d] border border-stone-800">
                 <h3 className="font-bold text-amber-300 mb-2">
-                  2. 水平精度倍率（Current vs Target）
+                  2. 水平精度倍率（目標に近づけるほど跳ね上がる）
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono-num text-xs">
                   <div className="p-2 bg-[#110e15] border border-stone-800">
@@ -110,34 +107,34 @@ export const RulesModal: React.FC<RulesModalProps> = ({ onClose }) => {
                     <div className="text-orange-300 font-bold">×5.00 〜 ×6.50</div>
                   </div>
                   <div className="p-2 bg-[#231906] border border-amber-500/70">
-                    <div className="text-amber-300">完全水平 (誤差 0g)</div>
-                    <div className="text-yellow-300 font-bold">×12.00 + 無料リロール券</div>
+                    <div className="text-amber-300">完全水平（誤差 0g）</div>
+                    <div className="text-yellow-300 font-bold">×12.00 + 無料入替券</div>
                   </div>
                 </div>
                 <p className="text-xs text-stone-400 mt-2">
-                  ※ 悪魔の接着剤などで Target を超過したまま確定した場合、水平精度倍率は ×5.00 となります。
+                  ※ 悪魔の接着剤などで目標を超えたまま耐えて手を引いた場合、水平倍率は一律 ×5.00 になります。また目標に届かなくても手を引けばコインは得られます。
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-[#1c1014] border border-red-800/50">
                   <h3 className="font-bold text-red-300 mb-1.5">
-                    3. OVERLOAD 猶予と DEATH DEFIED!
+                    3. 超過猶予と起死回生
                   </h3>
                   <p className="text-xs text-stone-300 leading-relaxed">
-                    Current が Target を <strong className="text-red-200">1g〜15g（遺物で25g）</strong> 超過すると、ギロチンが急降下し <strong className="text-red-300">OVERLOAD_CHANCE</strong> に突入（1Trial 1回まで）。
-                    確定と供物は封じられ、<strong className="text-amber-200">1アクションのみ</strong>で Target 以下に引き戻せれば生還！このTrialの Sin倍率が <strong className="text-emerald-300">×2.0（DEATH DEFIED!）</strong> になります。失敗や大幅超過は即斬首（獲得0）となります。
+                    現在の重さが目標を <strong className="text-red-200">1g〜15g（遺物で25g）</strong> 超えるとギロチンが急停止し、一度だけ猶予が与えられます。
+                    手を引くことと供物は封じられますが、<strong className="text-amber-200">たった一手</strong>で目標以下へ引き戻せば生還し、この審判の罪倍率が <strong className="text-emerald-300">×2.0（DEATH DEFIED!）</strong> に跳ね上がります。引き戻せなければ即斬首（獲得0 G）となります。
                   </p>
                 </div>
 
                 <div className="p-4 bg-[#15121b] border border-stone-800">
                   <h3 className="font-bold text-amber-300 mb-1.5">
-                    4. 供物台 & 血のオールイン契約
+                    4. 供物台と血の契約
                   </h3>
                   <p className="text-xs text-stone-300 leading-relaxed">
-                    <strong className="text-stone-100">供物台（Discard）</strong>では手札のおもりを捧げてその Soul の半分（端数切捨て、遺物で2倍）を蓄積できます。
+                    <strong className="text-stone-100">供物台</strong>では手札のおもりを捧げて、その魂の半分（端数切捨て、遺物で2倍）を蓄積できます。
                     <br />
-                    <strong className="text-red-300">血のオールイン契約（Trial 3限定）</strong>は開始時に結ぶことで Target +20g・OVERLOAD猶予なし となる代わりに、完全水平（100%）達成で Day ノルマ残額を一発完済します。
+                    <strong className="text-red-300">血のオールイン契約（第3審判のみ）</strong>を結ぶと目標 +20g・超過猶予なしになる代わりに、完全水平（誤差0g）の達成でその日のノルマ残額を一発で完済します。
                   </p>
                 </div>
               </div>
@@ -156,12 +153,15 @@ export const RulesModal: React.FC<RulesModalProps> = ({ onClose }) => {
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-bold text-stone-100">{w.name}</span>
                       <span className="font-mono-num text-xs text-amber-300">
-                        {w.id === 'w_mercury' ? '10~20g' : `${w.weight}g`} · Soul {w.soul} · Sin +{w.sinBonus}
+                        {w.id === 'w_mercury' ? '10~20g' : `${w.weight}g`} · 魂{w.soul}
+                        {w.sinBonus > 0 ? ` · 罪+${w.sinBonus}` : ''}
                       </span>
                     </div>
-                    <p className="text-xs text-stone-300 mt-1 leading-relaxed">
-                      {w.effectDesc}
-                    </p>
+                    {w.effectDesc && (
+                      <p className="text-xs text-stone-300 mt-1 leading-relaxed">
+                        {w.effectDesc}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -171,7 +171,7 @@ export const RulesModal: React.FC<RulesModalProps> = ({ onClose }) => {
           {tab === 'items' && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-sm font-bold text-sky-300 mb-2">道具（Tools・全4種）</h3>
+                <h3 className="text-sm font-bold text-sky-300 mb-2">道具（全4種）</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {TOOL_LIST.map((t) => (
                     <div
@@ -196,7 +196,7 @@ export const RulesModal: React.FC<RulesModalProps> = ({ onClose }) => {
               </div>
 
               <div>
-                <h3 className="text-sm font-bold text-purple-300 mb-2">死神の遺物（Relics・全6種）</h3>
+                <h3 className="text-sm font-bold text-purple-300 mb-2">死神の遺物（全6種）</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {RELIC_LIST.map((r) => (
                     <div

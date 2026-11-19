@@ -32,6 +32,9 @@ export interface EvaluateCashOutParams {
   pendulumSoulBonus: number;
   deathDefiedMult: number;
   relics: RelicId[];
+  bloodAllIn?: boolean;
+  currentCoins?: number;
+  quota?: number;
 }
 
 export function evaluateCashOut({
@@ -42,6 +45,9 @@ export function evaluateCashOut({
   pendulumSoulBonus,
   deathDefiedMult,
   relics,
+  bloodAllIn = false,
+  currentCoins = 0,
+  quota = 0,
 }: EvaluateCashOutParams): CashOutResult {
   let totalSoul = sacrificeSoul + pendulumSoulBonus;
   let totalSinMult = 1.0;
@@ -79,11 +85,13 @@ export function evaluateCashOut({
     totalSinMult += addedSin;
 
     if (addedSoul > 0) {
-      labels.push(`+${addedSoul} Soul`);
+      labels.push(`+${addedSoul} 魂`);
     }
     if (addedSin > 0) {
       labels.push(
-        sinDouble ? `+${addedSin.toFixed(1)} Sin (無重力×2)` : `+${addedSin.toFixed(1)} Sin`
+        sinDouble
+          ? `+${addedSin.toFixed(1)} 罪 (無重力×2)`
+          : `+${addedSin.toFixed(1)} 罪`
       );
     }
 
@@ -95,20 +103,20 @@ export function evaluateCashOut({
         if (currentWeight <= targetWeight && ratio >= 0.95) {
           totalSinMult *= 1.8;
           sinMultFactor *= 1.8;
-          labels.push('×1.8 Sin (黄金)');
+          labels.push('×1.8 罪倍率 (黄金の心臓)');
         }
       } else if (source.defId === 'w_crystal') {
         if (tensCount > 0) {
           const factor = Math.pow(1.3, tensCount);
           totalSinMult *= factor;
           sinMultFactor *= factor;
-          labels.push(`×${factor.toFixed(2)} Sin (共鳴×${tensCount})`);
+          labels.push(`×${factor.toFixed(2)} 罪倍率 (共鳴×${tensCount})`);
         }
       } else if (source.defId === 'w_crown') {
         if (triggerIndex === scaleWeights.length - 1) {
           bonusBalanceMult += 3.0;
           addedBalanceMult += 3.0;
-          labels.push('+3.0 水平倍率 (狂王)');
+          labels.push('+3.0 水平倍率 (狂王の冠)');
         }
       }
     }
@@ -127,15 +135,16 @@ export function evaluateCashOut({
       const w = scaleWeights[i];
 
       if (w.defId === 'w_mirror') {
-        // Mirror's own base stats
         const own = applyWeightEffect(w, i, false);
         let combinedSoul = own.addedSoul;
         let combinedSin = own.addedSin;
         let combinedFactor = own.sinMultFactor;
         let combinedBal = own.addedBalanceMult;
         const combinedLabels = [...own.labels];
+        let mirroredIndex: number | undefined;
 
         if (i > 0) {
+          mirroredIndex = i - 1;
           const leftNeighbor = scaleWeights[i - 1];
           const isLeftAlsoMirror = leftNeighbor.defId === 'w_mirror';
           const mirrored = applyWeightEffect(leftNeighbor, i, !isLeftAlsoMirror);
@@ -143,15 +152,13 @@ export function evaluateCashOut({
           combinedSin += mirrored.addedSin;
           combinedFactor *= mirrored.sinMultFactor;
           combinedBal += mirrored.addedBalanceMult;
-          combinedLabels.push(
-            `鏡写し(${leftNeighbor.name})`,
-            ...mirrored.labels
-          );
+          combinedLabels.push(`鏡写し(${leftNeighbor.name})`, ...mirrored.labels);
         }
 
         steps.push({
           pass,
           index: i,
+          mirroredIndex,
           uid: w.uid,
           name: w.name,
           addedSoul: combinedSoul,
@@ -183,7 +190,17 @@ export function evaluateCashOut({
 
   const baseBalanceMult = calculateBalanceMultiplier(currentWeight, targetWeight);
   const finalBalanceMult = baseBalanceMult + bonusBalanceMult;
-  const finalCoins = Math.floor(totalSoul * totalSinMult * finalBalanceMult);
+  const baseCoins = Math.floor(totalSoul * totalSinMult * finalBalanceMult);
+
+  let bloodContractBonus = 0;
+  if (bloodAllIn && isMiracleBalance && quota > currentCoins) {
+    const needed = quota - currentCoins;
+    if (needed > baseCoins) {
+      bloodContractBonus = needed - baseCoins;
+    }
+  }
+
+  const finalCoins = baseCoins + bloodContractBonus;
 
   return {
     totalSoul,
@@ -191,6 +208,8 @@ export function evaluateCashOut({
     baseBalanceMult,
     bonusBalanceMult,
     finalBalanceMult,
+    baseCoins,
+    bloodContractBonus,
     finalCoins,
     isMiracleBalance,
     steps,

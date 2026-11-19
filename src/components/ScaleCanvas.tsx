@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { GamePhase, InteractionMode, WeightId, WeightInstance } from '../types/game';
+import { computeScaleAngleDeg } from '../utils/dropSimulator';
 
 interface ScaleCanvasProps {
   currentWeight: number;
@@ -7,15 +8,13 @@ interface ScaleCanvasProps {
   scaleWeights: WeightInstance[];
   phase: GamePhase;
   interactionMode: InteractionMode;
-  activeScoreIndex: number | null;
+  activeScoreIndices: number[];
   dropEventId: number;
   coinBurstId: number;
   hasPendulum: boolean;
   suspenseTier: 'safe' | 'danger' | 'critical';
   reaperSpeech: string;
-  onPendulumBounce: (xPercent: number, yPercent: number, bounceIndex: number) => void;
   onSelectPanWeight: (uid: string) => void;
-  onExposeAngle?: (angleDeg: number) => void;
 }
 
 interface Spark {
@@ -92,27 +91,24 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
   scaleWeights,
   phase,
   interactionMode,
-  activeScoreIndex,
+  activeScoreIndices,
   dropEventId,
   coinBurstId,
   hasPendulum,
   suspenseTier,
   reaperSpeech,
-  onPendulumBounce,
   onSelectPanWeight,
-  onExposeAngle,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Latest props in refs for rAF loop without re-subscribing
   const propsRef = useRef({
     currentWeight,
     targetWeight,
     scaleWeights,
     phase,
     interactionMode,
-    activeScoreIndex,
+    activeScoreIndices,
     hasPendulum,
     suspenseTier,
   });
@@ -122,48 +118,35 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
     scaleWeights,
     phase,
     interactionMode,
-    activeScoreIndex,
+    activeScoreIndices,
     hasPendulum,
     suspenseTier,
   };
 
-  const onBounceRef = useRef(onPendulumBounce);
-  onBounceRef.current = onPendulumBounce;
-  const onExposeAngleRef = useRef(onExposeAngle);
-  onExposeAngleRef.current = onExposeAngle;
-
-  // Physics & animation mutable state (never causes React re-renders)
+  // Purely visual/cosmetic physics state — never mutates game state or rewards
   const physRef = useRef({
     angleDeg: -24,
     velocityDeg: 0,
     guillotineProgress: 0.02,
-    guillotineVel: 0,
     sparks: [] as Spark[],
     coinParticles: [] as CoinParticle[],
     hitboxes: [] as WeightHitbox[],
     hoveredUid: null as string | null,
-    bouncesInDrop: 0,
-    bounceWindowActive: false,
     lastDropEventId: 0,
     lastCoinBurstId: 0,
     scoreJumpOffset: new Map<string, number>(),
     time: 0,
     lastPanRightPos: { x: 0, y: 0 },
-    lastHudAngleReport: 0,
   });
 
-  // Trigger drop impulse when dropEventId increments
   useEffect(() => {
     if (dropEventId > 0 && dropEventId !== physRef.current.lastDropEventId) {
       physRef.current.lastDropEventId = dropEventId;
-      physRef.current.bouncesInDrop = 0;
-      physRef.current.bounceWindowActive = true;
       const impulse = hasPendulum ? 58 : 26;
       physRef.current.velocityDeg += impulse;
     }
   }, [dropEventId, hasPendulum]);
 
-  // Trigger coin particle fountain when coinBurstId increments
   useEffect(() => {
     if (coinBurstId > 0 && coinBurstId !== physRef.current.lastCoinBurstId) {
       physRef.current.lastCoinBurstId = coinBurstId;
@@ -244,20 +227,19 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
 
       if (isActiveScore) {
         ctx.shadowColor = '#facc15';
-        ctx.shadowBlur = 18;
+        ctx.shadowBlur = 20;
       } else if (isSelectMode) {
         ctx.shadowColor = isHovered ? '#38bdf8' : '#f59e0b';
         ctx.shadowBlur = isHovered ? 16 : 8;
       }
 
-      // Base body shape
       ctx.fillStyle = pal.fill;
       ctx.strokeStyle = isActiveScore
         ? '#fde047'
         : isHovered && isSelectMode
         ? '#7dd3fc'
         : pal.stroke;
-      ctx.lineWidth = isActiveScore || (isHovered && isSelectMode) ? 2.4 : 1.5;
+      ctx.lineWidth = isActiveScore || (isHovered && isSelectMode) ? 2.5 : 1.5;
 
       if (w.defId === 'w_feather' || w.defId === 'w_fallen' || w.defId === 'w_helium') {
         ctx.beginPath();
@@ -300,7 +282,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.fill();
         ctx.stroke();
       } else {
-        // Trapezoid / ingot brass weight
         ctx.beginPath();
         ctx.moveTo(-radius * 0.62, -radius * 0.82);
         ctx.lineTo(radius * 0.62, -radius * 0.82);
@@ -313,7 +294,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
 
       ctx.shadowBlur = 0;
 
-      // Selection ring when Tweezers mode active
       if (isSelectMode) {
         ctx.beginPath();
         ctx.arc(0, 0, radius + 4, 0, Math.PI * 2);
@@ -324,7 +304,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.setLineDash([]);
       }
 
-      // Weight text stamp
       ctx.fillStyle = '#f8fafc';
       ctx.font = `700 ${Math.max(10, Math.round(radius * 0.65))}px "JetBrains Mono", monospace`;
       ctx.textAlign = 'center';
@@ -345,7 +324,7 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         scaleWeights: weights,
         phase: curPhase,
         interactionMode: curMode,
-        activeScoreIndex: scoreIdx,
+        activeScoreIndices: scoreIndices,
         hasPendulum: pendulum,
         suspenseTier: tier,
       } = propsRef.current;
@@ -363,48 +342,17 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         return;
       }
 
-      // 1. Update Scale Spring Physics
       const ratio = tgtW > 0 ? curW / tgtW : 0;
-      let targetAngleDeg = 0;
-      if (ratio <= 1.0) {
-        targetAngleDeg = Math.max(-28, -24 * (1 - ratio));
-      } else {
-        targetAngleDeg = Math.min(28, (ratio - 1.0) * 68);
-      }
+      const targetAngleDeg = computeScaleAngleDeg(curW, tgtW);
 
-      // Suspense slow-motion & spring tuning
       const k = pendulum ? 76 : tier === 'critical' ? 32 : tier === 'danger' ? 44 : 62;
       const c = pendulum ? 2.4 : tier === 'critical' ? 3.2 : 5.4;
 
-      const prevVel = p.velocityDeg;
       const accel = -k * (p.angleDeg - targetAngleDeg) - c * p.velocityDeg;
       p.velocityDeg += accel * dt;
       p.angleDeg += p.velocityDeg * dt;
 
-      // Detect bounce peak for r_pendulum
-      if (
-        p.bounceWindowActive &&
-        pendulum &&
-        prevVel * p.velocityDeg < 0 &&
-        Math.abs(p.angleDeg - targetAngleDeg) > 0.45 &&
-        p.bouncesInDrop < 5
-      ) {
-        p.bouncesInDrop += 1;
-        const panXPercent = ((p.lastPanRightPos.x || width * 0.65) / width) * 100;
-        const panYPercent = ((p.lastPanRightPos.y || height * 0.56) / height) * 100;
-        onBounceRef.current(panXPercent, panYPercent - 6, p.bouncesInDrop);
-      }
-
-      if (Math.abs(p.velocityDeg) < 0.25 && Math.abs(p.angleDeg - targetAngleDeg) < 0.2) {
-        p.bounceWindowActive = false;
-      }
-
-      if (p.time - p.lastHudAngleReport > 0.08 && onExposeAngleRef.current) {
-        p.lastHudAngleReport = p.time;
-        onExposeAngleRef.current(p.angleDeg);
-      }
-
-      // 2. Update Guillotine Blade Progress
+      // Guillotine Blade Progress
       let targetGuillotine = 0.02;
       if (curPhase === 'GUILLOTINE') {
         targetGuillotine = 0.96;
@@ -423,7 +371,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       const maxGuillotineDropY = height * 0.72;
       const bladeEdgeY = 12 + p.guillotineProgress * (maxGuillotineDropY - 12);
 
-      // Sparks on sudden arrest or slam
       if (
         curPhase === 'OVERLOAD_CHANCE' &&
         Math.abs(prevGuillotine - 0.61) > 0.02 &&
@@ -439,7 +386,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         spawnSparks(centerX, bladeEdgeY, 36, '#ef4444');
       }
 
-      // 3. Update Sparks & Gold Coin Particles
       p.sparks = p.sparks.filter((s) => {
         s.life += dt;
         s.vy += 420 * dt;
@@ -457,12 +403,11 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         return cp.life < cp.maxLife;
       });
 
-      // 4. Begin Drawing
       ctx.save();
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, width, height);
 
-      // Gothic Courtroom Radial Background
+      // Courtroom Radial Background
       const bgGrad = ctx.createRadialGradient(
         centerX,
         height * 0.38,
@@ -477,7 +422,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
-      // Subtle Gothic Cathedral Arch lines
       ctx.strokeStyle = 'rgba(180, 140, 72, 0.08)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -487,26 +431,25 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.arc(centerX, height * 0.52, Math.min(width, height) * 0.36, Math.PI, 0);
       ctx.stroke();
 
-      // 5. Reaper's Glowing Eyes in Deep Background
+      // Reaper's Glowing Eyes
       const eyeY = height * 0.2;
       const eyeSpread = Math.min(82, width * 0.085);
-      let eyeColor = '#e2e8f0'; // white-silver
+      let eyeColor = '#e2e8f0';
       if (curW === tgtW && curW > 0) {
-        eyeColor = '#facc15'; // Miracle gold
+        eyeColor = '#facc15';
       } else if (
         curPhase === 'OVERLOAD_CHANCE' ||
         curPhase === 'GUILLOTINE' ||
         ratio >= 0.92
       ) {
-        eyeColor = '#ef4444'; // Crimson
+        eyeColor = '#ef4444';
       } else if (ratio >= 0.75) {
-        eyeColor = '#f59e0b'; // Amber orange
+        eyeColor = '#f59e0b';
       }
 
       const lookX = Math.max(-4, Math.min(4, (p.angleDeg / 24) * 4));
       const eyePulse = 0.85 + Math.sin(p.time * 2.8) * 0.15;
 
-      // Reaper subtle hood silhouette
       ctx.fillStyle = 'rgba(5, 4, 8, 0.72)';
       ctx.beginPath();
       ctx.moveTo(centerX - eyeSpread * 2.1, eyeY + 88);
@@ -523,14 +466,12 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.shadowBlur = 24 * eyePulse;
         ctx.fillStyle = eyeColor;
 
-        // Almond gothic eye slit
         ctx.beginPath();
         ctx.moveTo(ex - 20, ey);
         ctx.quadraticCurveTo(ex, ey - 10 * eyePulse, ex + 20, ey);
         ctx.quadraticCurveTo(ex, ey + 9 * eyePulse, ex - 20, ey);
         ctx.fill();
 
-        // Dark slit pupil
         ctx.shadowBlur = 0;
         ctx.fillStyle = '#09080c';
         ctx.beginPath();
@@ -539,14 +480,13 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.restore();
       });
 
-      // 6. Scale Pedestal & Central Pillar
+      // Scale Pedestal & Central Pillar
       const baseBottomY = Math.min(height * 0.89, fulcrumY + 250);
       const pillarGrad = ctx.createLinearGradient(centerX - 16, 0, centerX + 16, 0);
       pillarGrad.addColorStop(0, '#5c4319');
       pillarGrad.addColorStop(0.5, '#d4a348');
       pillarGrad.addColorStop(1, '#4f3915');
 
-      // Pedestal
       ctx.fillStyle = '#1b1614';
       ctx.strokeStyle = '#9e762f';
       ctx.lineWidth = 2;
@@ -559,7 +499,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.fill();
       ctx.stroke();
 
-      // Pillar shaft
       ctx.fillStyle = pillarGrad;
       ctx.fillRect(centerX - 7, fulcrumY, 14, baseBottomY - 22 - fulcrumY);
 
@@ -573,7 +512,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.arc(0, 0, gaugeR, -Math.PI * 0.78, -Math.PI * 0.22);
       ctx.stroke();
 
-      // Center zero notch (100% miracle mark)
       ctx.strokeStyle = curW === tgtW ? '#facc15' : '#f59e0b';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
@@ -581,7 +519,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.lineTo(0, -gaugeR + 6);
       ctx.stroke();
 
-      // Needle pointing opposite/proportional to tilt
       const needleRad = (p.angleDeg * Math.PI) / 180;
       ctx.save();
       ctx.rotate(needleRad);
@@ -594,7 +531,7 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.restore();
       ctx.restore();
 
-      // 7. Scale Beam & Hanging Pans
+      // Scale Beam & Hanging Pans
       const armLen = Math.min(265, width * 0.28);
       const chainLen = Math.min(138, height * 0.23);
       const beamRad = (p.angleDeg * Math.PI) / 180;
@@ -604,7 +541,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       const rightHookX = centerX + Math.cos(beamRad) * armLen;
       const rightHookY = fulcrumY + Math.sin(beamRad) * armLen;
 
-      // Draw Beam
       ctx.save();
       ctx.translate(centerX, fulcrumY);
       ctx.rotate(beamRad);
@@ -630,7 +566,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.fill();
       ctx.stroke();
 
-      // Fulcrum jewel
       ctx.beginPath();
       ctx.arc(0, 0, 12, 0, Math.PI * 2);
       ctx.fillStyle = curW === tgtW ? '#facc15' : '#991b1b';
@@ -640,10 +575,9 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.stroke();
       ctx.restore();
 
-      // Helper to draw hanging pan (keeps pan horizontal vertically due to gravity!)
       const panWidth = Math.min(182, width * 0.2);
 
-      // --- LEFT PAN (Target Counterweight) ---
+      // Left Pan (Target)
       const leftPanX = leftHookX;
       const leftPanY = leftHookY + chainLen;
 
@@ -656,7 +590,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.lineTo(leftPanX + panWidth * 0.42, leftPanY);
       ctx.stroke();
 
-      // Left Pan Brass Dish
       ctx.fillStyle = '#3c2a12';
       ctx.strokeStyle = '#d4a348';
       ctx.lineWidth = 2.2;
@@ -667,7 +600,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.fill();
       ctx.stroke();
 
-      // Target Soul Stone sitting on Left Pan
       ctx.save();
       ctx.translate(leftPanX, leftPanY - 22);
       ctx.fillStyle = '#251a2e';
@@ -687,15 +619,15 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.shadowBlur = 0;
 
       ctx.fillStyle = '#e9d5ff';
-      ctx.font = '700 10px "Cinzel", serif';
+      ctx.font = '700 10px "Noto Serif JP", serif';
       ctx.textAlign = 'center';
-      ctx.fillText('TARGET', 0, -5);
+      ctx.fillText('目標', 0, -5);
       ctx.fillStyle = '#facc15';
       ctx.font = '700 15px "JetBrains Mono", monospace';
       ctx.fillText(`${tgtW}g`, 0, 12);
       ctx.restore();
 
-      // --- RIGHT PAN (Player Weights) ---
+      // Right Pan (Player Weights)
       const rightPanX = rightHookX;
       const rightPanY = rightHookY + chainLen;
       p.lastPanRightPos = { x: rightPanX, y: rightPanY };
@@ -709,7 +641,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.lineTo(rightPanX + panWidth * 0.44, rightPanY);
       ctx.stroke();
 
-      // Right Pan Brass Dish
       ctx.fillStyle = curW === tgtW ? '#4a3810' : '#3c2a12';
       ctx.strokeStyle = curW === tgtW ? '#facc15' : '#d4a348';
       ctx.lineWidth = curW === tgtW ? 3 : 2.2;
@@ -720,7 +651,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.fill();
       ctx.stroke();
 
-      // Render Placed Weights Left-to-Right
       const newHitboxes: WeightHitbox[] = [];
       const count = weights.length;
       if (count > 0) {
@@ -735,10 +665,10 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
           const rowStartX = rightPanX - ((itemsInRow - 1) * spacingX) / 2;
           const wx = rowStartX + col * spacingX;
 
-          // Animate jump when activeScoreIndex === idx
+          const isActiveScore = scoreIndices.includes(idx);
           const prevJump = p.scoreJumpOffset.get(w.uid) ?? 0;
-          const targetJump = scoreIdx === idx ? -22 : 0;
-          const nextJump = prevJump + (targetJump - prevJump) * Math.min(1, dt * 18);
+          const targetJump = isActiveScore ? -22 : 0;
+          const nextJump = prevJump + (targetJump - prevJump) * Math.min(1, dt * 20);
           p.scoreJumpOffset.set(w.uid, nextJump);
 
           const wy = rightPanY - radius - 2 - row * (radius * 1.95) + nextJump;
@@ -749,7 +679,7 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
             wx,
             wy,
             radius,
-            scoreIdx === idx,
+            isActiveScore,
             p.hoveredUid === w.uid,
             curMode === 'SELECT_PAN_TWEEZERS'
           );
@@ -759,7 +689,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       }
       p.hitboxes = newHitboxes;
 
-      // Current weight badge below right pan
       ctx.save();
       ctx.fillStyle =
         curW === tgtW
@@ -767,19 +696,18 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
           : curW > tgtW
           ? '#f87171'
           : '#e7e5e4';
-      ctx.font = '700 13px "JetBrains Mono", monospace';
+      ctx.font = '700 14px "JetBrains Mono", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(`CURRENT: ${curW}g`, rightPanX, rightPanY + 38);
+      ctx.fillText(`現在 ${curW}g`, rightPanX, rightPanY + 38);
       ctx.restore();
 
-      // 8. Guillotine Blade descending from top
+      // Guillotine Blade
       if (p.guillotineProgress > 0.03) {
         const bladeW = 132;
         const bladeH = 110;
         const topY = bladeEdgeY - bladeH;
 
         ctx.save();
-        // Guide rails
         ctx.strokeStyle = 'rgba(120, 113, 108, 0.35)';
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -789,7 +717,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.lineTo(centerX + bladeW / 2 + 8, bladeEdgeY + 18);
         ctx.stroke();
 
-        // Heavy steel angled blade
         const bladeGrad = ctx.createLinearGradient(
           centerX - bladeW / 2,
           topY,
@@ -812,7 +739,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.fill();
         ctx.stroke();
 
-        // Razor edge glint
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -822,7 +748,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.restore();
       }
 
-      // 9. Sparks & Gold Coin Particles
       for (const s of p.sparks) {
         const alpha = Math.max(0, 1 - s.life / s.maxLife);
         ctx.fillStyle = s.color;
@@ -897,7 +822,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         }`}
       />
 
-      {/* Reaper Dialogue Subtitle */}
       {reaperSpeech && (
         <div className="pointer-events-none absolute top-2.5 left-1/2 -translate-x-1/2 max-w-md px-4 py-1.5 bg-[#0e0b13]/85 border border-amber-800/40 text-center shadow-lg">
           <p className="text-xs sm:text-sm text-amber-100/90 italic tracking-wide">
@@ -906,7 +830,6 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         </div>
       )}
 
-      {/* Tweezers Prompt Overlay */}
       {interactionMode === 'SELECT_PAN_TWEEZERS' && (
         <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-sky-950/90 border border-sky-400/70 text-sky-100 text-xs font-semibold shadow-lg">
           真鍮のピンセット：右皿のおもりをクリックして手札に戻す

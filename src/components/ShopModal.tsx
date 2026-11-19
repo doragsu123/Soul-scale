@@ -53,14 +53,13 @@ export const ShopModal: React.FC<ShopModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
       <div className="w-full max-w-5xl max-h-[92vh] flex flex-col bg-[#110e15] border border-amber-700/60 shadow-2xl">
-        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-3.5 border-b border-stone-800 bg-[#17121c]">
           <div>
             <h2 className="font-display text-xl sm:text-2xl font-bold text-amber-200 tracking-wider">
               死神の闇市 — DAY {day} 終了
             </h2>
             <p className="text-xs text-stone-400 mt-0.5">
-              ノルマ達成後の余剰コインで天秤を強化せよ · デッキ {deck.length}個 · 道具 {tools.length}/3 · 遺物 {relics.length}/6
+              余剰コインで天秤を強化せよ · 袋 {deck.length}個 · 道具 {tools.length}/3 · 遺物 {relics.length}/6
             </p>
           </div>
 
@@ -82,17 +81,16 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           </div>
         </div>
 
-        {/* Body */}
         <div className="p-4 sm:p-5 overflow-y-auto gothic-scroll space-y-5 flex-1">
           {removingMode ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-stone-800 pb-2">
                 <div>
                   <h3 className="text-base font-bold text-red-300">
-                    デッキからおもり1個を永久削除（費用: {shop.removeCost} G）
+                    袋からおもり1個を永久に手放す（費用: {shop.removeCost} G）
                   </h3>
                   <p className="text-xs text-stone-400">
-                    重い鉛や不要な分銅を削り、精密計量の確率を高めよ。（最低5個まで残す必要あり）
+                    不要な重りを削り、狙った分銅を引く確率を高めよ。（最低5個は残す必要あり）
                   </p>
                 </div>
                 <button
@@ -121,8 +119,8 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                         {w.name}
                       </div>
                       <div className="font-mono-num text-[11px] text-amber-300">
-                        {w.weight}g · Soul {w.soul}
-                        {w.sinBonus > 0 ? ` · Sin +${w.sinBonus}` : ''}
+                        {w.weight}g · 魂{w.soul}
+                        {w.sinBonus > 0 ? ` · 罪+${w.sinBonus}` : ''}
                       </div>
                     </div>
                   </button>
@@ -131,14 +129,13 @@ export const ShopModal: React.FC<ShopModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Weights Section (3 slots) */}
               <section>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-bold text-amber-200 flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-400" />
-                    <span>おもり（Weights）</span>
+                    <span>おもり</span>
                   </h3>
-                  <span className="text-xs text-stone-400">購入するとデッキに加わる</span>
+                  <span className="text-xs text-stone-400">購入すると袋に加わる</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {shop.weights.map((w, idx) => {
@@ -168,13 +165,17 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                               </div>
                             </div>
                             <div className="font-mono-num text-right text-xs">
-                              <div className="text-amber-300 font-bold">Soul {w.soul}</div>
-                              <div className="text-rose-300">Sin +{w.sinBonus}</div>
+                              <div className="text-amber-300 font-bold">魂 {w.soul}</div>
+                              {w.sinBonus > 0 && (
+                                <div className="text-rose-300">罪 +{w.sinBonus}</div>
+                              )}
                             </div>
                           </div>
-                          <p className="text-xs text-stone-300 mt-2.5 leading-relaxed">
-                            {w.effectDesc}
-                          </p>
+                          {w.effectDesc && (
+                            <p className="text-xs text-stone-300 mt-2.5 leading-relaxed">
+                              {w.effectDesc}
+                            </p>
+                          )}
                         </div>
 
                         <button
@@ -197,14 +198,12 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                 </div>
               </section>
 
-              {/* Tools & Relics 2-Column Split */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                {/* Tools (2 slots) */}
                 <section>
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-bold text-sky-200 flex items-center gap-2">
                       <Wrench className="w-4 h-4 text-sky-400" />
-                      <span>道具（Tools）</span>
+                      <span>道具</span>
                     </h3>
                     <span className="text-xs text-stone-400">最大3枠 ({tools.length}/3)</span>
                   </div>
@@ -259,14 +258,13 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                   </div>
                 </section>
 
-                {/* Relics (2 slots) */}
                 <section>
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-bold text-purple-200 flex items-center gap-2">
                       <Shield className="w-4 h-4 text-purple-400" />
-                      <span>死神の遺物（Relics）</span>
+                      <span>死神の遺物</span>
                     </h3>
-                    <span className="text-xs text-stone-400">永続パッシブ ({relics.length}/6)</span>
+                    <span className="text-xs text-stone-400">永続効果 ({relics.length}/6)</span>
                   </div>
                   {shop.relics.length === 0 ? (
                     <div className="p-6 bg-[#15121c] border border-stone-800 text-xs text-stone-400 text-center">
@@ -331,7 +329,6 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           )}
         </div>
 
-        {/* Footer Services: Reroll & Deck Remove */}
         {!removingMode && (
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-stone-800 bg-[#15111a]">
             <div className="flex flex-wrap items-center gap-3">
@@ -348,8 +345,8 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>
                   {freeRerolls > 0
-                    ? `陳列リロール（無料券 残${freeRerolls}）`
-                    : `陳列リロール（${shop.rerollCost} G）`}
+                    ? `品揃え入替（無料券 残${freeRerolls}）`
+                    : `品揃え入替（${shop.rerollCost} G）`}
                 </span>
               </button>
 
@@ -366,16 +363,16 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>
                   {shop.removeUsed
-                    ? 'デッキ削除（本日使用済み）'
+                    ? 'おもり削除（本日使用済み）'
                     : deck.length <= 5
-                    ? 'デッキ削除（最小5個）'
+                    ? 'おもり削除（最小5個）'
                     : `おもり1個削除（${shop.removeCost} G）`}
                 </span>
               </button>
             </div>
 
             <div className="text-xs text-stone-400">
-              完全水平（誤差0g）達成で無料リロール券を獲得
+              完全水平（誤差0g）の達成で無料入替券を獲得
             </div>
           </div>
         )}

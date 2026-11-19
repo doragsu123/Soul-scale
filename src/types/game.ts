@@ -117,6 +117,7 @@ export interface FloatingEffect {
 export interface ScoreStep {
   pass: number;
   index: number;
+  mirroredIndex?: number;
   uid: string;
   name: string;
   addedSoul: number;
@@ -132,6 +133,8 @@ export interface CashOutResult {
   baseBalanceMult: number;
   bonusBalanceMult: number;
   finalBalanceMult: number;
+  baseCoins: number;
+  bloodContractBonus: number;
   finalCoins: number;
   isMiracleBalance: boolean;
   steps: ScoreStep[];
