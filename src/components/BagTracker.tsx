@@ -57,14 +57,14 @@ export const BagTracker: React.FC<BagTrackerProps> = ({ bag, glassActive }) => {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-2.5 px-3.5 py-2 bg-[#141118]/90 hover:bg-[#1e1925] border border-amber-700/40 hover:border-amber-500/70 text-stone-200 transition-colors cursor-pointer shadow-lg"
+          className="flex items-center gap-2.5 px-3 py-1.5 bg-[#121014]/90 hover:bg-[#1a161c] border border-stone-800 hover:border-stone-600 text-stone-300 transition-colors cursor-pointer shadow-md"
           title="おもり袋の中身を確認"
         >
-          <Package className="w-4 h-4 text-amber-400 shrink-0" />
-          <span className="text-xs font-semibold tracking-wide whitespace-nowrap">
+          <Package className="w-4 h-4 text-[#b89146] shrink-0" />
+          <span className="text-xs font-medium tracking-wide whitespace-nowrap">
             おもり袋
           </span>
-          <span className="font-mono-num text-sm font-bold text-amber-300">
+          <span className="font-mono-num text-sm font-bold text-[#e6dfd2]">
             {bag.length}個
           </span>
         </button>

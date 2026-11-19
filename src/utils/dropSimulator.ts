@@ -28,11 +28,16 @@ export function computeScaleAngleDeg(
   currentWeight: number,
   targetWeight: number
 ): number {
-  const ratio = targetWeight > 0 ? currentWeight / targetWeight : 0;
-  if (ratio <= 1.0) {
-    return Math.max(-28, -24 * (1 - ratio));
+  if (targetWeight <= 0) return 0;
+  if (currentWeight === targetWeight) return 0;
+
+  if (currentWeight < targetWeight) {
+    const deficit = Math.min(1.2, (targetWeight - currentWeight) / targetWeight);
+    return -24 * Math.pow(deficit, 0.55);
   }
-  return Math.min(28, (ratio - 1.0) * 68);
+
+  const excess = (currentWeight - targetWeight) / targetWeight;
+  return Math.min(28, 28 * Math.pow(excess, 0.55));
 }
 
 /**

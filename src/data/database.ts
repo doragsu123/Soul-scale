@@ -327,12 +327,12 @@ export function orderDay1Trial1Deck(deck: WeightInstance[]): WeightInstance[] {
   const desiredPrefix: WeightId[] = [
     'w_lead',   // 20
     'w_lead',   // 20
-    'w_copper', // 5 (kept in hand or played last!)
+    'w_copper', // 5 (kept in hand!)
     'w_lead',   // 20
     'w_cast',   // 15
     'w_cast',   // 15
+    'w_copper', // 5 (brings 90 -> 95 while original 5g stays in hand!)
     'w_iron',   // 10
-    'w_copper', // 5
   ];
   const pool = [...deck];
   const head: WeightInstance[] = [];

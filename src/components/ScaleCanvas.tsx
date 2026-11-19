@@ -1,6 +1,14 @@
 import React, { useEffect, useRef } from 'react';
-import { GamePhase, InteractionMode, WeightId, WeightInstance } from '../types/game';
+import { GamePhase, InteractionMode, WeightInstance } from '../types/game';
 import { computeScaleAngleDeg } from '../utils/dropSimulator';
+import { drawWeightCanvasArt } from './weightArt';
+
+export interface FlightEvent {
+  id: number;
+  weight: WeightInstance;
+  startClientX: number;
+  startClientY: number;
+}
 
 interface ScaleCanvasProps {
   currentWeight: number;
@@ -10,9 +18,11 @@ interface ScaleCanvasProps {
   interactionMode: InteractionMode;
   activeScoreIndices: number[];
   dropEventId: number;
+  flightEvent: FlightEvent | null;
   coinBurstId: number;
   hasPendulum: boolean;
   suspenseTier: 'safe' | 'danger' | 'critical';
+  miracleLit: boolean;
   reaperSpeech: string;
   onSelectPanWeight: (uid: string) => void;
 }
@@ -46,43 +56,15 @@ interface WeightHitbox {
   r: number;
 }
 
-function getWeightPalette(defId: WeightId): {
-  fill: string;
-  stroke: string;
-  accent: string;
-} {
-  switch (defId) {
-    case 'w_lead':
-      return { fill: '#374151', stroke: '#9ca3af', accent: '#1f2937' };
-    case 'w_cast':
-      return { fill: '#27272a', stroke: '#a1a1aa', accent: '#52525b' };
-    case 'w_iron':
-      return { fill: '#475569', stroke: '#cbd5e1', accent: '#94a3b8' };
-    case 'w_copper':
-      return { fill: '#92400e', stroke: '#f59e0b', accent: '#fbbf24' };
-    case 'w_feather':
-      return { fill: '#cbd5e1', stroke: '#f8fafc', accent: '#94a3b8' };
-    case 'w_fallen':
-      return { fill: '#4c1d2e', stroke: '#fb7185', accent: '#f43f5e' };
-    case 'w_helium':
-      return { fill: '#0f766e', stroke: '#5eead4', accent: '#99f6e4' };
-    case 'w_gold':
-      return { fill: '#b45309', stroke: '#fde047', accent: '#fef08a' };
-    case 'w_crystal':
-      return { fill: '#1d4ed8', stroke: '#93c5fd', accent: '#60a5fa' };
-    case 'w_mirror':
-      return { fill: '#334155', stroke: '#f8fafc', accent: '#d97706' };
-    case 'w_twin':
-      return { fill: '#4338ca', stroke: '#c7d2fe', accent: '#818cf8' };
-    case 'w_mercury':
-      return { fill: '#1e293b', stroke: '#cbd5e1', accent: '#38bdf8' };
-    case 'w_slime':
-      return { fill: '#15803d', stroke: '#86efac', accent: '#dcfce7' };
-    case 'w_soul':
-      return { fill: '#6b21a8', stroke: '#e9d5ff', accent: '#fef08a' };
-    case 'w_crown':
-      return { fill: '#b45309', stroke: '#fde047', accent: '#ef4444' };
-  }
+interface ActiveFlight {
+  id: number;
+  uid: string;
+  weight: WeightInstance;
+  startX: number;
+  startY: number;
+  elapsed: number;
+  duration: number;
+  touchedDown: boolean;
 }
 
 export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
@@ -93,9 +75,11 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
   interactionMode,
   activeScoreIndices,
   dropEventId,
+  flightEvent,
   coinBurstId,
   hasPendulum,
   suspenseTier,
+  miracleLit,
   reaperSpeech,
   onSelectPanWeight,
 }) => {
@@ -111,6 +95,7 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
     activeScoreIndices,
     hasPendulum,
     suspenseTier,
+    miracleLit,
   });
   propsRef.current = {
     currentWeight,
@@ -121,11 +106,13 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
     activeScoreIndices,
     hasPendulum,
     suspenseTier,
+    miracleLit,
   };
 
   // Purely visual/cosmetic physics state — never mutates game state or rewards
   const physRef = useRef({
-    angleDeg: -24,
+    angleDeg: computeScaleAngleDeg(currentWeight, targetWeight),
+    visualTargetAngleDeg: computeScaleAngleDeg(currentWeight, targetWeight),
     velocityDeg: 0,
     guillotineProgress: 0.02,
     sparks: [] as Spark[],
@@ -133,17 +120,62 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
     hitboxes: [] as WeightHitbox[],
     hoveredUid: null as string | null,
     lastDropEventId: 0,
+    lastFlightId: 0,
     lastCoinBurstId: 0,
+    activeFlight: null as ActiveFlight | null,
+    landingWobble: new Map<string, { elapsed: number; kind: 'lead' | 'coin' | 'feather' }>(),
     scoreJumpOffset: new Map<string, number>(),
     time: 0,
     lastPanRightPos: { x: 0, y: 0 },
   });
 
+  // Trigger flight immediately when flightEvent arrives
+  useEffect(() => {
+    if (!flightEvent || flightEvent.id === physRef.current.lastFlightId) return;
+    physRef.current.lastFlightId = flightEvent.id;
+
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    const startX = rect ? flightEvent.startClientX - rect.left : 400;
+    const startY = rect ? flightEvent.startClientY - rect.top : 450;
+
+    const isFeather =
+      flightEvent.weight.defId === 'w_fallen' ||
+      flightEvent.weight.defId === 'w_feather' ||
+      flightEvent.weight.defId === 'w_helium';
+    const isLead = flightEvent.weight.defId === 'w_lead';
+
+    physRef.current.activeFlight = {
+      id: flightEvent.id,
+      uid: flightEvent.weight.uid,
+      weight: flightEvent.weight,
+      startX,
+      startY,
+      elapsed: 0,
+      duration: isFeather ? 0.42 : isLead ? 0.24 : 0.29,
+      touchedDown: false,
+    };
+  }, [flightEvent]);
+
+  // Keep visualTargetAngleDeg synced when NOT waiting for flight touchdown
+  useEffect(() => {
+    const f = physRef.current.activeFlight;
+    if (!f || f.touchedDown) {
+      physRef.current.visualTargetAngleDeg = computeScaleAngleDeg(
+        currentWeight,
+        targetWeight
+      );
+    }
+  }, [currentWeight, targetWeight]);
+
   useEffect(() => {
     if (dropEventId > 0 && dropEventId !== physRef.current.lastDropEventId) {
       physRef.current.lastDropEventId = dropEventId;
-      const impulse = hasPendulum ? 58 : 26;
-      physRef.current.velocityDeg += impulse;
+      // If there's no active flight, apply impulse right away
+      if (!physRef.current.activeFlight) {
+        const impulse = hasPendulum ? 58 : 22;
+        physRef.current.velocityDeg += impulse;
+      }
     }
   }, [dropEventId, hasPendulum]);
 
@@ -156,17 +188,17 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       const h = canvas.clientHeight;
       const originX = physRef.current.lastPanRightPos.x || w * 0.65;
       const originY = physRef.current.lastPanRightPos.y || h * 0.58;
-      for (let i = 0; i < 42; i++) {
-        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.7;
-        const speed = 160 + Math.random() * 290;
+      for (let i = 0; i < 36; i++) {
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.6;
+        const speed = 150 + Math.random() * 260;
         physRef.current.coinParticles.push({
-          x: originX + (Math.random() - 0.5) * 40,
-          y: originY - 12,
+          x: originX + (Math.random() - 0.5) * 36,
+          y: originY - 10,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
           life: 0,
-          maxLife: 1.1 + Math.random() * 0.7,
-          size: 4 + Math.random() * 4,
+          maxLife: 1.0 + Math.random() * 0.6,
+          size: 3.5 + Math.random() * 3.5,
           spin: Math.random() * Math.PI * 2,
         });
       }
@@ -197,7 +229,7 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
     const spawnSparks = (x: number, y: number, count: number, color = '#fb923c') => {
       for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2;
-        const spd = 80 + Math.random() * 240;
+        const spd = 80 + Math.random() * 220;
         physRef.current.sparks.push({
           x,
           y,
@@ -206,111 +238,9 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
           life: 0,
           maxLife: 0.35 + Math.random() * 0.35,
           color,
-          size: 1.5 + Math.random() * 2.2,
+          size: 1.5 + Math.random() * 2.0,
         });
       }
-    };
-
-    const drawPanWeight = (
-      ctx: CanvasRenderingContext2D,
-      w: WeightInstance,
-      wx: number,
-      wy: number,
-      radius: number,
-      isActiveScore: boolean,
-      isHovered: boolean,
-      isSelectMode: boolean
-    ) => {
-      const pal = getWeightPalette(w.defId);
-      ctx.save();
-      ctx.translate(wx, wy);
-
-      if (isActiveScore) {
-        ctx.shadowColor = '#facc15';
-        ctx.shadowBlur = 20;
-      } else if (isSelectMode) {
-        ctx.shadowColor = isHovered ? '#38bdf8' : '#f59e0b';
-        ctx.shadowBlur = isHovered ? 16 : 8;
-      }
-
-      ctx.fillStyle = pal.fill;
-      ctx.strokeStyle = isActiveScore
-        ? '#fde047'
-        : isHovered && isSelectMode
-        ? '#7dd3fc'
-        : pal.stroke;
-      ctx.lineWidth = isActiveScore || (isHovered && isSelectMode) ? 2.5 : 1.5;
-
-      if (w.defId === 'w_feather' || w.defId === 'w_fallen' || w.defId === 'w_helium') {
-        ctx.beginPath();
-        ctx.ellipse(0, 0, radius * 0.65, radius * 0.98, 0.3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      } else if (w.defId === 'w_crystal' || w.defId === 'w_soul') {
-        ctx.beginPath();
-        ctx.moveTo(0, -radius);
-        ctx.lineTo(radius * 0.85, -radius * 0.15);
-        ctx.lineTo(radius * 0.6, radius * 0.88);
-        ctx.lineTo(-radius * 0.6, radius * 0.88);
-        ctx.lineTo(-radius * 0.85, -radius * 0.15);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else if (w.defId === 'w_crown') {
-        ctx.beginPath();
-        ctx.moveTo(-radius * 0.9, radius * 0.75);
-        ctx.lineTo(-radius * 0.9, -radius * 0.45);
-        ctx.lineTo(-radius * 0.35, 0);
-        ctx.lineTo(0, -radius * 0.85);
-        ctx.lineTo(radius * 0.35, 0);
-        ctx.lineTo(radius * 0.9, -radius * 0.45);
-        ctx.lineTo(radius * 0.9, radius * 0.75);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else if (w.defId === 'w_slime') {
-        ctx.beginPath();
-        ctx.arc(0, 2, radius * 0.9, Math.PI, 0);
-        ctx.lineTo(radius * 0.9, radius * 0.75);
-        ctx.lineTo(-radius * 0.9, radius * 0.75);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else if (w.defId === 'w_gold') {
-        ctx.beginPath();
-        ctx.arc(0, 0, radius * 0.92, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(-radius * 0.62, -radius * 0.82);
-        ctx.lineTo(radius * 0.62, -radius * 0.82);
-        ctx.lineTo(radius * 0.92, radius * 0.82);
-        ctx.lineTo(-radius * 0.92, radius * 0.82);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      ctx.shadowBlur = 0;
-
-      if (isSelectMode) {
-        ctx.beginPath();
-        ctx.arc(0, 0, radius + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = isHovered ? '#38bdf8' : 'rgba(251, 191, 36, 0.55)';
-        ctx.lineWidth = isHovered ? 2 : 1.2;
-        ctx.setLineDash([3, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = `700 ${Math.max(10, Math.round(radius * 0.65))}px "JetBrains Mono", monospace`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${w.weight}g`, 0, 1);
-
-      ctx.restore();
     };
 
     const tick = (now: number) => {
@@ -327,6 +257,7 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         activeScoreIndices: scoreIndices,
         hasPendulum: pendulum,
         suspenseTier: tier,
+        miracleLit: isMiracleLit,
       } = propsRef.current;
 
       const p = physRef.current;
@@ -342,24 +273,68 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         return;
       }
 
-      const ratio = tgtW > 0 ? curW / tgtW : 0;
-      const targetAngleDeg = computeScaleAngleDeg(curW, tgtW);
+      // 1. Update Active Flight & Touchdown Trigger
+      if (p.activeFlight) {
+        p.activeFlight.elapsed += dt;
+        if (p.activeFlight.elapsed >= p.activeFlight.duration && !p.activeFlight.touchedDown) {
+          p.activeFlight.touchedDown = true;
+          const fw = p.activeFlight.weight;
+          p.visualTargetAngleDeg = computeScaleAngleDeg(curW, tgtW);
 
-      const k = pendulum ? 76 : tier === 'critical' ? 32 : tier === 'danger' ? 44 : 62;
-      const c = pendulum ? 2.4 : tier === 'critical' ? 3.2 : 5.4;
+          // Per-weight impact signature:
+          // Lead: heavy drop, NO bounce (small damped settle)
+          // Copper Coin: edge rock once before settling
+          // Feather: soft upward lift!
+          const isFeather =
+            fw.defId === 'w_fallen' ||
+            fw.defId === 'w_feather' ||
+            fw.defId === 'w_helium';
+          const isLead = fw.defId === 'w_lead';
+          const isCoin = fw.defId === 'w_copper';
+
+          if (isFeather) {
+            p.velocityDeg += fw.weight < 0 ? -24 : 8;
+            p.landingWobble.set(fw.uid, { elapsed: 0, kind: 'feather' });
+          } else if (isLead) {
+            // Stops dead without bounce
+            p.velocityDeg += 10;
+            p.landingWobble.set(fw.uid, { elapsed: 0, kind: 'lead' });
+          } else if (isCoin) {
+            p.velocityDeg += pendulum ? 50 : 18;
+            p.landingWobble.set(fw.uid, { elapsed: 0, kind: 'coin' });
+          } else {
+            p.velocityDeg += pendulum ? 54 : 20;
+          }
+          p.activeFlight = null;
+        }
+      }
+
+      // Advance landing wobbles
+      p.landingWobble.forEach((val, key) => {
+        val.elapsed += dt;
+        if (val.elapsed > 0.7) {
+          p.landingWobble.delete(key);
+        }
+      });
+
+      // 2. Scale Beam Spring Physics
+      const ratio = tgtW > 0 ? curW / tgtW : 0;
+      const targetAngleDeg = p.visualTargetAngleDeg;
+      const k = pendulum ? 74 : tier === 'critical' ? 38 : 56;
+      const c = pendulum ? 2.6 : tier === 'critical' ? 4.4 : 6.2;
 
       const accel = -k * (p.angleDeg - targetAngleDeg) - c * p.velocityDeg;
       p.velocityDeg += accel * dt;
       p.angleDeg += p.velocityDeg * dt;
 
-      // Guillotine Blade Progress
-      let targetGuillotine = 0.02;
+      // 3. Guillotine Blade
+      let targetGuillotine = 0.0;
       if (curPhase === 'GUILLOTINE') {
         targetGuillotine = 0.96;
       } else if (curPhase === 'OVERLOAD_CHANCE') {
         targetGuillotine = 0.61;
-      } else if (ratio >= 0.8) {
-        targetGuillotine = 0.12 + Math.min(1, (ratio - 0.8) / 0.2) * 0.28;
+      } else if (ratio >= 0.85 && curW !== tgtW) {
+        targetGuillotine = 0.1 + Math.min(1, (ratio - 0.85) / 0.15) * 0.24;
       }
 
       const prevGuillotine = p.guillotineProgress;
@@ -367,23 +342,23 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       p.guillotineProgress += (targetGuillotine - p.guillotineProgress) * Math.min(1, dt * gSpeed);
 
       const centerX = width * 0.5;
-      const fulcrumY = height * 0.34;
-      const maxGuillotineDropY = height * 0.72;
-      const bladeEdgeY = 12 + p.guillotineProgress * (maxGuillotineDropY - 12);
+      const fulcrumY = height * 0.37;
+      const maxGuillotineDropY = height * 0.74;
+      const bladeEdgeY = 8 + p.guillotineProgress * (maxGuillotineDropY - 8);
 
       if (
         curPhase === 'OVERLOAD_CHANCE' &&
         Math.abs(prevGuillotine - 0.61) > 0.02 &&
         Math.abs(p.guillotineProgress - 0.61) <= 0.03
       ) {
-        spawnSparks(centerX, bladeEdgeY, 22, '#fb923c');
+        spawnSparks(centerX, bladeEdgeY, 20, '#fb923c');
       }
       if (
         curPhase === 'GUILLOTINE' &&
         Math.abs(prevGuillotine - 0.96) > 0.03 &&
         Math.abs(p.guillotineProgress - 0.96) <= 0.04
       ) {
-        spawnSparks(centerX, bladeEdgeY, 36, '#ef4444');
+        spawnSparks(centerX, bladeEdgeY, 32, '#ef4444');
       }
 
       p.sparks = p.sparks.filter((s) => {
@@ -403,137 +378,249 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         return cp.life < cp.maxLife;
       });
 
+      // ================================================================
+      // LAYER 1: QUIET COURTROOM BACKDROP, TABLETOP & SEATED REAPER IN GLOOM
+      // ================================================================
       ctx.save();
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, width, height);
 
-      // Courtroom Radial Background
+      // Upper-left key light gradient (subtle, calm darkness)
       const bgGrad = ctx.createRadialGradient(
+        width * 0.34,
+        height * 0.28,
+        24,
         centerX,
-        height * 0.38,
-        30,
-        centerX,
-        height * 0.5,
-        Math.max(width, height) * 0.72
+        height * 0.52,
+        Math.max(width, height) * 0.78
       );
-      bgGrad.addColorStop(0, '#191420');
-      bgGrad.addColorStop(0.55, '#0e0b12');
-      bgGrad.addColorStop(1, '#070609');
+      bgGrad.addColorStop(0, '#19161b');
+      bgGrad.addColorStop(0.55, '#0e0c10');
+      bgGrad.addColorStop(1, '#070608');
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
-      ctx.strokeStyle = 'rgba(180, 140, 72, 0.08)';
-      ctx.lineWidth = 1.5;
+      // Reaper seated silently deep in the gloom (only discernible after looking)
+      const reaperShoulderY = height * 0.56;
+      const reaperHeadY = height * 0.26;
+      ctx.save();
+      ctx.fillStyle = 'rgba(13, 11, 16, 0.92)';
+      // Seated hooded cloak silhouette
       ctx.beginPath();
-      ctx.arc(centerX, height * 0.52, Math.min(width, height) * 0.42, Math.PI, 0);
-      ctx.stroke();
+      ctx.moveTo(centerX - 165, reaperShoulderY + 120);
+      ctx.quadraticCurveTo(centerX - 130, reaperHeadY + 65, centerX - 52, reaperHeadY + 28);
+      ctx.quadraticCurveTo(centerX, reaperHeadY - 46, centerX + 52, reaperHeadY + 28);
+      ctx.quadraticCurveTo(centerX + 130, reaperHeadY + 65, centerX + 165, reaperShoulderY + 120);
+      ctx.closePath();
+      ctx.fill();
+
+      // Faint upper-left rim light on the Reaper's hood fold
+      ctx.strokeStyle = 'rgba(138, 116, 86, 0.14)';
+      ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.arc(centerX, height * 0.52, Math.min(width, height) * 0.36, Math.PI, 0);
+      ctx.moveTo(centerX - 120, reaperShoulderY + 40);
+      ctx.quadraticCurveTo(centerX - 88, reaperHeadY + 55, centerX - 38, reaperHeadY + 12);
+      ctx.quadraticCurveTo(centerX - 10, reaperHeadY - 26, centerX + 14, reaperHeadY - 12);
       ctx.stroke();
 
-      // Reaper's Glowing Eyes
-      const eyeY = height * 0.2;
-      const eyeSpread = Math.min(82, width * 0.085);
-      let eyeColor = '#e2e8f0';
-      if (curW === tgtW && curW > 0) {
-        eyeColor = '#facc15';
-      } else if (
-        curPhase === 'OVERLOAD_CHANCE' ||
-        curPhase === 'GUILLOTINE' ||
-        ratio >= 0.92
-      ) {
-        eyeColor = '#ef4444';
-      } else if (ratio >= 0.75) {
-        eyeColor = '#f59e0b';
+      // Subdued eyes deep within hood (barely glowing so they don't steal focus)
+      const eyeY = reaperHeadY + 26;
+      const eyeSpread = 22;
+      let eyeColor = 'rgba(195, 185, 166, 0.36)';
+      if (isMiracleLit) {
+        eyeColor = 'rgba(234, 179, 8, 0.68)';
+      } else if (curPhase === 'OVERLOAD_CHANCE' || curPhase === 'GUILLOTINE') {
+        eyeColor = 'rgba(220, 68, 68, 0.72)';
+      } else if (ratio >= 0.88) {
+        eyeColor = 'rgba(217, 138, 54, 0.52)';
       }
 
-      const lookX = Math.max(-4, Math.min(4, (p.angleDeg / 24) * 4));
-      const eyePulse = 0.85 + Math.sin(p.time * 2.8) * 0.15;
-
-      ctx.fillStyle = 'rgba(5, 4, 8, 0.72)';
-      ctx.beginPath();
-      ctx.moveTo(centerX - eyeSpread * 2.1, eyeY + 88);
-      ctx.quadraticCurveTo(centerX, eyeY - 90, centerX + eyeSpread * 2.1, eyeY + 88);
-      ctx.closePath();
-      ctx.fill();
-
+      const lookX = Math.max(-2.5, Math.min(2.5, (p.angleDeg / 24) * 2.5));
       [-1, 1].forEach((side) => {
-        const ex = centerX + side * eyeSpread;
-        const ey = eyeY;
-
-        ctx.save();
-        ctx.shadowColor = eyeColor;
-        ctx.shadowBlur = 24 * eyePulse;
         ctx.fillStyle = eyeColor;
-
         ctx.beginPath();
-        ctx.moveTo(ex - 20, ey);
-        ctx.quadraticCurveTo(ex, ey - 10 * eyePulse, ex + 20, ey);
-        ctx.quadraticCurveTo(ex, ey + 9 * eyePulse, ex - 20, ey);
+        ctx.ellipse(centerX + side * eyeSpread + lookX, eyeY, 4.2, 1.8, 0, 0, Math.PI * 2);
         ctx.fill();
-
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#09080c';
-        ctx.beginPath();
-        ctx.ellipse(ex + lookX, ey, 3.2, 6.2, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
       });
+      ctx.restore();
 
-      // Scale Pedestal & Central Pillar
-      const baseBottomY = Math.min(height * 0.89, fulcrumY + 250);
-      const pillarGrad = ctx.createLinearGradient(centerX - 16, 0, centerX + 16, 0);
-      pillarGrad.addColorStop(0, '#5c4319');
-      pillarGrad.addColorStop(0.5, '#d4a348');
-      pillarGrad.addColorStop(1, '#4f3915');
+      // Quiet dark wood table plane at lower third (clean, low-noise surface)
+      const tableTopY = Math.min(height * 0.84, fulcrumY + 232);
+      const tableGrad = ctx.createLinearGradient(0, tableTopY, 0, height);
+      tableGrad.addColorStop(0, '#1a1410');
+      tableGrad.addColorStop(0.25, '#130e0b');
+      tableGrad.addColorStop(1, '#0b0807');
+      ctx.fillStyle = tableGrad;
+      ctx.fillRect(0, tableTopY, width, height - tableTopY);
 
-      ctx.fillStyle = '#1b1614';
-      ctx.strokeStyle = '#9e762f';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(168, 134, 82, 0.16)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(centerX - 96, baseBottomY);
-      ctx.lineTo(centerX + 96, baseBottomY);
-      ctx.lineTo(centerX + 74, baseBottomY - 22);
-      ctx.lineTo(centerX - 74, baseBottomY - 22);
-      ctx.closePath();
-      ctx.fill();
+      ctx.moveTo(0, tableTopY);
+      ctx.lineTo(width, tableTopY);
       ctx.stroke();
 
-      ctx.fillStyle = pillarGrad;
-      ctx.fillRect(centerX - 7, fulcrumY, 14, baseBottomY - 22 - fulcrumY);
+      // ================================================================
+      // LAYER 2: AGED BRASS SCALE (↖ Lighting, Recessed Brown, Zero Scratch)
+      // ================================================================
+      const baseBottomY = tableTopY + 22;
 
-      // Degree Balance Gauge Arc above fulcrum
-      const gaugeR = 46;
-      ctx.save();
-      ctx.translate(centerX, fulcrumY);
-      ctx.strokeStyle = 'rgba(212, 163, 72, 0.35)';
+      // Pedestal shadow on tabletop
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.beginPath();
+      ctx.ellipse(centerX + 8, baseBottomY + 2, 118, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Stepped Aged Brass Pedestal (lit from upper-left)
+      const pedGrad = ctx.createLinearGradient(centerX - 102, baseBottomY - 26, centerX + 102, baseBottomY);
+      pedGrad.addColorStop(0, '#a88142');
+      pedGrad.addColorStop(0.32, '#694c21');
+      pedGrad.addColorStop(0.75, '#3b2912');
+      pedGrad.addColorStop(1, '#24180a');
+
+      ctx.fillStyle = pedGrad;
+      ctx.strokeStyle = '#31210e';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(0, 0, gaugeR, -Math.PI * 0.78, -Math.PI * 0.22);
+      ctx.moveTo(centerX - 102, baseBottomY);
+      ctx.lineTo(centerX + 102, baseBottomY);
+      ctx.lineTo(centerX + 82, baseBottomY - 20);
+      ctx.lineTo(centerX - 82, baseBottomY - 20);
+      ctx.closePath();
+      ctx.fill();
       ctx.stroke();
 
-      ctx.strokeStyle = curW === tgtW ? '#facc15' : '#f59e0b';
-      ctx.lineWidth = 2.5;
+      // Upper-left specular rim on pedestal
+      ctx.strokeStyle = 'rgba(242, 211, 146, 0.55)';
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(0, -gaugeR - 6);
-      ctx.lineTo(0, -gaugeR + 6);
+      ctx.moveTo(centerX - 100, baseBottomY - 1);
+      ctx.lineTo(centerX - 82, baseBottomY - 20);
+      ctx.lineTo(centerX + 10, baseBottomY - 20);
       ctx.stroke();
 
+      // Central Brass Pillar with recessed tarnished brown flutes
+      const pillarTopY = fulcrumY - 6;
+      const pillarBotY = baseBottomY - 20;
+      const pillarGrad = ctx.createLinearGradient(centerX - 10, 0, centerX + 10, 0);
+      pillarGrad.addColorStop(0, '#c49b52');
+      pillarGrad.addColorStop(0.28, '#87622b');
+      pillarGrad.addColorStop(0.55, '#3b2913'); // tarnished flute recess
+      pillarGrad.addColorStop(0.8, '#5e441e');
+      pillarGrad.addColorStop(1, '#291c0c');
+
+      ctx.fillStyle = pillarGrad;
+      ctx.fillRect(centerX - 8, pillarTopY, 16, pillarBotY - pillarTopY);
+
+      // Decorative collar rings with dull brown recesses
+      [pillarTopY + 28, pillarBotY - 14].forEach((ry) => {
+        ctx.fillStyle = '#473217';
+        ctx.fillRect(centerX - 13, ry - 4, 26, 8);
+        ctx.strokeStyle = 'rgba(242, 211, 146, 0.45)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(centerX - 13, ry - 4);
+        ctx.lineTo(centerX + 6, ry - 4);
+        ctx.stroke();
+      });
+
+      // Precision Brass Arc Plate & Deep Hand-Carved Zero Scratch
+      const gaugeR = 72;
+      ctx.save();
+      ctx.translate(centerX, fulcrumY);
+
+      // Brass arc plaque
+      ctx.strokeStyle = '#382712';
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.arc(0, 0, gaugeR, -Math.PI * 0.68, -Math.PI * 0.32);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#8b662f';
+      ctx.lineWidth = 7.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, gaugeR, -Math.PI * 0.675, -Math.PI * 0.325);
+      ctx.stroke();
+
+      // Thin upper-left rim highlight along arc
+      ctx.strokeStyle = 'rgba(245, 216, 152, 0.42)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, gaugeR + 4, -Math.PI * 0.675, -Math.PI * 0.42);
+      ctx.stroke();
+
+      // Subtle minor tick marks
+      for (let deg = -20; deg <= 20; deg += 5) {
+        if (deg === 0) continue;
+        const rad = ((deg - 90) * Math.PI) / 180;
+        const rIn = gaugeR - 3;
+        const rOut = gaugeR + 3;
+        ctx.strokeStyle = 'rgba(30, 20, 10, 0.75)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(rad) * rIn, Math.sin(rad) * rIn);
+        ctx.lineTo(Math.cos(rad) * rOut, Math.sin(rad) * rOut);
+        ctx.stroke();
+      }
+
+      // THE HAND-CARVED DEEP ZERO SCRATCH (刻み傷) at 0°
+      // Slightly longer, rugged chisel groove that glints when aligned
+      ctx.save();
+      if (isMiracleLit) {
+        ctx.shadowColor = 'rgba(250, 204, 21, 0.85)';
+        ctx.shadowBlur = 12;
+      }
+      // Bright carved upper-left bevel
+      ctx.strokeStyle = isMiracleLit ? '#fef08a' : '#e6c27a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(-1.1, -gaugeR - 7);
+      ctx.lineTo(-0.8, -gaugeR + 8);
+      ctx.stroke();
+      // Deep dark incised notch groove
+      ctx.strokeStyle = '#140c05';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(0, -gaugeR - 8);
+      ctx.lineTo(0.4, -gaugeR + 9);
+      ctx.stroke();
+      ctx.restore();
+
+      // Rotating Slender Pointer Needle (pivots cleanly at fulcrum)
       const needleRad = (p.angleDeg * Math.PI) / 180;
       ctx.save();
       ctx.rotate(needleRad);
-      ctx.strokeStyle = curW === tgtW ? '#fef08a' : '#e5e7eb';
-      ctx.lineWidth = 2;
+
+      if (isMiracleLit) {
+        ctx.shadowColor = 'rgba(250, 204, 21, 0.9)';
+        ctx.shadowBlur = 14;
+      }
+
+      // Needle body: fine tapered brass/ivory spire
+      ctx.fillStyle = isMiracleLit ? '#fef08a' : '#d6ba84';
+      ctx.strokeStyle = '#291c0d';
+      ctx.lineWidth = 0.8;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(0, -gaugeR + 4);
+      ctx.moveTo(-2.4, 14);
+      ctx.lineTo(0, -gaugeR + 3);
+      ctx.lineTo(2.4, 14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Needle sharp tip highlight
+      ctx.strokeStyle = isMiracleLit ? '#ffffff' : 'rgba(255, 244, 214, 0.75)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-1, 6);
+      ctx.lineTo(0, -gaugeR + 3);
       ctx.stroke();
       ctx.restore();
       ctx.restore();
 
       // Scale Beam & Hanging Pans
-      const armLen = Math.min(265, width * 0.28);
-      const chainLen = Math.min(138, height * 0.23);
+      const armLen = Math.min(272, width * 0.285);
+      const chainLen = Math.min(132, height * 0.22);
       const beamRad = (p.angleDeg * Math.PI) / 180;
 
       const leftHookX = centerX - Math.cos(beamRad) * armLen;
@@ -545,118 +632,182 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       ctx.translate(centerX, fulcrumY);
       ctx.rotate(beamRad);
 
+      // Aged brass beam lit from upper-left
       const beamGrad = ctx.createLinearGradient(0, -10, 0, 10);
-      beamGrad.addColorStop(0, '#f3c669');
-      beamGrad.addColorStop(0.5, '#b6832c');
-      beamGrad.addColorStop(1, '#5e4214');
-      ctx.fillStyle = beamGrad;
-      ctx.strokeStyle = '#fde68a';
-      ctx.lineWidth = 1;
+      beamGrad.addColorStop(0, '#cfa65c');
+      beamGrad.addColorStop(0.35, '#8c662b');
+      beamGrad.addColorStop(1, '#3b2912');
 
+      ctx.fillStyle = beamGrad;
+      ctx.strokeStyle = '#2b1d0b';
+      ctx.lineWidth = 1.3;
       ctx.beginPath();
-      ctx.moveTo(-armLen - 12, -3);
-      ctx.lineTo(-18, -9);
-      ctx.lineTo(18, -9);
-      ctx.lineTo(armLen + 12, -3);
-      ctx.lineTo(armLen + 12, 4);
-      ctx.lineTo(18, 9);
-      ctx.lineTo(-18, 9);
-      ctx.lineTo(-armLen - 12, 4);
+      ctx.moveTo(-armLen - 10, -2.5);
+      ctx.lineTo(-18, -8);
+      ctx.lineTo(18, -8);
+      ctx.lineTo(armLen + 10, -2.5);
+      ctx.lineTo(armLen + 10, 3);
+      ctx.lineTo(18, 7.5);
+      ctx.lineTo(-18, 7.5);
+      ctx.lineTo(-armLen - 10, 3);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
+      // Thin upper specular line on beam
+      ctx.strokeStyle = 'rgba(247, 224, 168, 0.55)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(0, 0, 12, 0, Math.PI * 2);
-      ctx.fillStyle = curW === tgtW ? '#facc15' : '#991b1b';
-      ctx.fill();
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2.5;
+      ctx.moveTo(-armLen - 8, -2.2);
+      ctx.lineTo(-18, -7.2);
+      ctx.lineTo(18, -7.2);
+      ctx.lineTo(armLen + 8, -2.2);
       ctx.stroke();
+
+      // Fulcrum pivot boss (thin brass rim highlight)
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fillStyle = '#4a3316';
+      ctx.fill();
+      ctx.strokeStyle = isMiracleLit ? '#fde047' : '#d6ad60';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(-2, -2, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = isMiracleLit ? '#fef08a' : '#b88f46';
+      ctx.fill();
       ctx.restore();
 
-      const panWidth = Math.min(182, width * 0.2);
+      const panWidth = Math.min(184, width * 0.205);
 
-      // Left Pan (Target)
+      const drawBrassPan = (
+        hookX: number,
+        hookY: number,
+        panX: number,
+        panY: number,
+        litGold: boolean
+      ) => {
+        // Hanging brass chains (left chain slightly brighter from upper-left light)
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#9c7536';
+        ctx.beginPath();
+        ctx.moveTo(hookX, hookY);
+        ctx.lineTo(panX - panWidth * 0.43, panY);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#63481e';
+        ctx.beginPath();
+        ctx.moveTo(hookX, hookY);
+        ctx.lineTo(panX + panWidth * 0.43, panY);
+        ctx.stroke();
+
+        // Subtle center back cord
+        ctx.strokeStyle = 'rgba(99, 72, 30, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(hookX, hookY);
+        ctx.lineTo(panX, panY - 2);
+        ctx.stroke();
+
+        // Dish underside gradient
+        const dishGrad = ctx.createLinearGradient(
+          panX - panWidth * 0.5,
+          panY,
+          panX + panWidth * 0.5,
+          panY + 24
+        );
+        dishGrad.addColorStop(0, '#7d5a26');
+        dishGrad.addColorStop(0.5, '#473215');
+        dishGrad.addColorStop(1, '#261a0a');
+
+        ctx.save();
+        if (litGold) {
+          ctx.shadowColor = 'rgba(250, 204, 21, 0.55)';
+          ctx.shadowBlur = 14;
+        }
+        ctx.fillStyle = dishGrad;
+        ctx.strokeStyle = litGold ? '#facc15' : '#8a652d';
+        ctx.lineWidth = litGold ? 2.2 : 1.6;
+        ctx.beginPath();
+        ctx.moveTo(panX - panWidth * 0.5, panY);
+        ctx.lineTo(panX + panWidth * 0.5, panY);
+        ctx.quadraticCurveTo(panX, panY + 25, panX - panWidth * 0.5, panY);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Thin crisp brass highlight ONLY along upper-left pan rim
+        ctx.strokeStyle = litGold ? '#fef08a' : 'rgba(245, 217, 152, 0.72)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(panX - panWidth * 0.5, panY);
+        ctx.lineTo(panX + panWidth * 0.1, panY);
+        ctx.stroke();
+      };
+
+      // --- LEFT PAN (Target Weight Counterbalance) ---
       const leftPanX = leftHookX;
       const leftPanY = leftHookY + chainLen;
+      drawBrassPan(leftHookX, leftHookY, leftPanX, leftPanY, isMiracleLit);
 
-      ctx.strokeStyle = '#a1792f';
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.moveTo(leftHookX, leftHookY);
-      ctx.lineTo(leftPanX - panWidth * 0.42, leftPanY);
-      ctx.moveTo(leftHookX, leftHookY);
-      ctx.lineTo(leftPanX + panWidth * 0.42, leftPanY);
-      ctx.stroke();
-
-      ctx.fillStyle = '#3c2a12';
-      ctx.strokeStyle = '#d4a348';
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.moveTo(leftPanX - panWidth * 0.48, leftPanY);
-      ctx.lineTo(leftPanX + panWidth * 0.48, leftPanY);
-      ctx.quadraticCurveTo(leftPanX, leftPanY + 26, leftPanX - panWidth * 0.48, leftPanY);
-      ctx.fill();
-      ctx.stroke();
-
+      // Left Counterweight block sitting calmly on left pan
       ctx.save();
-      ctx.translate(leftPanX, leftPanY - 22);
-      ctx.fillStyle = '#251a2e';
-      ctx.strokeStyle = '#c084fc';
-      ctx.lineWidth = 2;
-      ctx.shadowColor = 'rgba(168, 85, 247, 0.45)';
-      ctx.shadowBlur = 14;
+      ctx.translate(leftPanX, leftPanY - 19);
+      const cwGrad = ctx.createLinearGradient(-22, -20, 22, 18);
+      cwGrad.addColorStop(0, '#4a3d33');
+      cwGrad.addColorStop(0.5, '#29211d');
+      cwGrad.addColorStop(1, '#14100e');
+      ctx.fillStyle = cwGrad;
+      ctx.strokeStyle = '#876d49';
+      ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.moveTo(-26, 20);
-      ctx.lineTo(-18, -16);
-      ctx.lineTo(0, -28);
-      ctx.lineTo(18, -16);
-      ctx.lineTo(26, 20);
+      ctx.moveTo(-22, 18);
+      ctx.lineTo(-16, -15);
+      ctx.lineTo(16, -15);
+      ctx.lineTo(22, 18);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
-      ctx.fillStyle = '#e9d5ff';
-      ctx.font = '700 10px "Noto Serif JP", serif';
+      // Upper-left edge highlight on counterweight
+      ctx.strokeStyle = 'rgba(229, 206, 165, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-21, 17);
+      ctx.lineTo(-16, -15);
+      ctx.lineTo(10, -15);
+      ctx.stroke();
+
+      ctx.fillStyle = '#c4b8a6';
+      ctx.font = '600 10px "Noto Serif JP", serif';
       ctx.textAlign = 'center';
-      ctx.fillText('目標', 0, -5);
-      ctx.fillStyle = '#facc15';
-      ctx.font = '700 15px "JetBrains Mono", monospace';
+      ctx.fillText('目標', 0, -2);
+      ctx.fillStyle = '#ece6da';
+      ctx.font = '700 13px "JetBrains Mono", monospace';
       ctx.fillText(`${tgtW}g`, 0, 12);
       ctx.restore();
 
-      // Right Pan (Player Weights)
+      // --- RIGHT PAN (Player Weights) ---
       const rightPanX = rightHookX;
       const rightPanY = rightHookY + chainLen;
       p.lastPanRightPos = { x: rightPanX, y: rightPanY };
+      drawBrassPan(rightHookX, rightHookY, rightPanX, rightPanY, isMiracleLit);
 
-      ctx.strokeStyle = '#a1792f';
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.moveTo(rightHookX, rightHookY);
-      ctx.lineTo(rightPanX - panWidth * 0.44, rightPanY);
-      ctx.moveTo(rightHookX, rightHookY);
-      ctx.lineTo(rightPanX + panWidth * 0.44, rightPanY);
-      ctx.stroke();
-
-      ctx.fillStyle = curW === tgtW ? '#4a3810' : '#3c2a12';
-      ctx.strokeStyle = curW === tgtW ? '#facc15' : '#d4a348';
-      ctx.lineWidth = curW === tgtW ? 3 : 2.2;
-      ctx.beginPath();
-      ctx.moveTo(rightPanX - panWidth * 0.5, rightPanY);
-      ctx.lineTo(rightPanX + panWidth * 0.5, rightPanY);
-      ctx.quadraticCurveTo(rightPanX, rightPanY + 26, rightPanX - panWidth * 0.5, rightPanY);
-      ctx.fill();
-      ctx.stroke();
+      // Compute pan slot layout (hide in-flight weight from pan until touchdown!)
+      const activeFlightUid = p.activeFlight && !p.activeFlight.touchedDown
+        ? p.activeFlight.uid
+        : null;
 
       const newHitboxes: WeightHitbox[] = [];
       const count = weights.length;
+      let flightTargetPos = { x: rightPanX, y: rightPanY - 18, size: 32 };
+
       if (count > 0) {
         const cols = Math.min(count, 6);
         const radius = count > 6 ? 13 : 16;
-        const spacingX = Math.min(34, (panWidth * 0.86) / Math.max(1, cols));
+        const artSize = radius * 2.05;
+        const spacingX = Math.min(35, (panWidth * 0.86) / Math.max(1, cols));
 
         weights.forEach((w, idx) => {
           const row = Math.floor(idx / 6);
@@ -667,48 +818,137 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
 
           const isActiveScore = scoreIndices.includes(idx);
           const prevJump = p.scoreJumpOffset.get(w.uid) ?? 0;
-          const targetJump = isActiveScore ? -22 : 0;
+          const targetJump = isActiveScore ? -20 : 0;
           const nextJump = prevJump + (targetJump - prevJump) * Math.min(1, dt * 20);
           p.scoreJumpOffset.set(w.uid, nextJump);
 
-          const wy = rightPanY - radius - 2 - row * (radius * 1.95) + nextJump;
+          const baseWy = rightPanY - radius * 0.85 - row * (radius * 1.9) + nextJump;
 
-          drawPanWeight(
-            ctx,
-            w,
-            wx,
-            wy,
-            radius,
-            isActiveScore,
-            p.hoveredUid === w.uid,
-            curMode === 'SELECT_PAN_TWEEZERS'
-          );
+          // Remember destination coordinates for active flying weight
+          if (w.uid === activeFlightUid) {
+            flightTargetPos = { x: wx, y: baseWy, size: artSize };
+            return;
+          }
 
-          newHitboxes.push({ uid: w.uid, x: wx, y: wy, r: radius + 6 });
+          // Contact wobble after landing
+          let tiltRad = 0;
+          let extraY = 0;
+          const wob = p.landingWobble.get(w.uid);
+          if (wob) {
+            if (wob.kind === 'coin') {
+              // Copper coin: rocks ONCE on its rim edge then lies flat!
+              const t = Math.min(1, wob.elapsed / 0.36);
+              tiltRad = Math.sin(t * Math.PI * 2.0) * 0.44 * (1 - t);
+              extraY = -Math.abs(Math.sin(t * Math.PI * 2.0)) * 4 * (1 - t);
+            } else if (wob.kind === 'feather') {
+              const t = Math.min(1, wob.elapsed / 0.35);
+              tiltRad = Math.sin(t * Math.PI) * -0.18 * (1 - t);
+            }
+            // Lead ('lead'): zero wobble, stops dead!
+          }
+
+          // Contact shadow on pan
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+          ctx.beginPath();
+          ctx.ellipse(wx + 2, baseWy + radius * 0.65, radius * 0.72, 3.2, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          const isHovered = p.hoveredUid === w.uid;
+          const isSelectMode = curMode === 'SELECT_PAN_TWEEZERS';
+
+          ctx.save();
+          ctx.translate(wx, baseWy + extraY);
+          drawWeightCanvasArt(ctx, w.defId, artSize, {
+            tiltRad,
+            glowGold: isActiveScore,
+            rimHighlight: isActiveScore
+              ? '#fde047'
+              : isHovered && isSelectMode
+              ? '#7dd3fc'
+              : undefined,
+            showStamp: count <= 8,
+            weightLabel: `${w.weight}g`,
+          });
+
+          if (isSelectMode) {
+            ctx.beginPath();
+            ctx.arc(0, 0, radius + 4, 0, Math.PI * 2);
+            ctx.strokeStyle = isHovered ? '#38bdf8' : 'rgba(212, 163, 82, 0.6)';
+            ctx.lineWidth = isHovered ? 2 : 1.2;
+            ctx.setLineDash([3, 3]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          ctx.restore();
+
+          newHitboxes.push({ uid: w.uid, x: wx, y: baseWy, r: radius + 6 });
         });
       }
       p.hitboxes = newHitboxes;
 
+      // Quiet label below right pan
       ctx.save();
-      ctx.fillStyle =
-        curW === tgtW
-          ? '#facc15'
-          : curW > tgtW
-          ? '#f87171'
-          : '#e7e5e4';
-      ctx.font = '700 14px "JetBrains Mono", monospace';
+      ctx.fillStyle = isMiracleLit
+        ? '#facc15'
+        : curW > tgtW
+        ? '#f87171'
+        : '#d6cfc2';
+      ctx.font = '700 13px "JetBrains Mono", monospace';
       ctx.textAlign = 'center';
       ctx.fillText(`現在 ${curW}g`, rightPanX, rightPanY + 38);
       ctx.restore();
 
-      // Guillotine Blade
+      // ================================================================
+      // LAYER 3: IN-FLIGHT WEIGHT FROM WOODEN BOX TO PAN
+      // ================================================================
+      if (p.activeFlight && !p.activeFlight.touchedDown) {
+        const f = p.activeFlight;
+        const rawT = Math.min(1, f.elapsed / f.duration);
+        const w = f.weight;
+        const isFeather =
+          w.defId === 'w_fallen' || w.defId === 'w_feather' || w.defId === 'w_helium';
+
+        // Easing
+        const ease = isFeather
+          ? 1 - Math.pow(1 - rawT, 2.2)
+          : rawT < 0.5
+          ? 2 * rawT * rawT
+          : 1 - Math.pow(-2 * rawT + 2, 2) / 2;
+
+        const arcHeight = isFeather ? 150 : 120;
+        const swayX = isFeather ? Math.sin(rawT * Math.PI * 2.5) * 18 : 0;
+
+        const curX = f.startX + (flightTargetPos.x - f.startX) * ease + swayX;
+        const baseY = f.startY + (flightTargetPos.y - f.startY) * ease;
+        const curY = baseY - Math.sin(rawT * Math.PI) * arcHeight;
+
+        const curSize = 48 + (flightTargetPos.size - 48) * ease;
+        const flightTilt = isFeather
+          ? Math.sin(rawT * Math.PI * 2.5) * 0.28
+          : w.defId === 'w_copper'
+          ? (1 - rawT) * -0.45
+          : 0;
+
+        // Detached shadow dropping onto tabletop/pan below
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.35 * (1 - Math.sin(rawT * Math.PI) * 0.5)})`;
+        ctx.beginPath();
+        ctx.ellipse(curX, baseY + 18, curSize * 0.28, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.translate(curX, curY);
+        drawWeightCanvasArt(ctx, w.defId, curSize, { tiltRad: flightTilt });
+        ctx.restore();
+      }
+
+      // Guillotine Blade (only appears in danger / overload / execution)
       if (p.guillotineProgress > 0.03) {
         const bladeW = 132;
         const bladeH = 110;
         const topY = bladeEdgeY - bladeH;
 
         ctx.save();
-        ctx.strokeStyle = 'rgba(120, 113, 108, 0.35)';
+        ctx.strokeStyle = 'rgba(120, 113, 108, 0.28)';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(centerX - bladeW / 2 - 8, 0);
@@ -724,12 +964,12 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
           bladeEdgeY
         );
         bladeGrad.addColorStop(0, '#3f3f46');
-        bladeGrad.addColorStop(0.55, '#a1a1aa');
+        bladeGrad.addColorStop(0.55, '#9ca3af');
         bladeGrad.addColorStop(1, '#e4e4e7');
 
         ctx.fillStyle = bladeGrad;
-        ctx.strokeStyle = curPhase === 'OVERLOAD_CHANCE' || curPhase === 'GUILLOTINE' ? '#ef4444' : '#71717a';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = curPhase === 'OVERLOAD_CHANCE' || curPhase === 'GUILLOTINE' ? '#ef4444' : '#52525b';
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
         ctx.moveTo(centerX - bladeW / 2, topY);
         ctx.lineTo(centerX + bladeW / 2, topY);
@@ -739,8 +979,8 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.fill();
         ctx.stroke();
 
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(centerX - bladeW / 2, bladeEdgeY);
         ctx.lineTo(centerX + bladeW / 2, bladeEdgeY - 34);
@@ -748,6 +988,7 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         ctx.restore();
       }
 
+      // Sparks & Gold Particles
       for (const s of p.sparks) {
         const alpha = Math.max(0, 1 - s.life / s.maxLife);
         ctx.fillStyle = s.color;
@@ -763,8 +1004,8 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
         const rx = Math.max(1.5, Math.abs(Math.cos(cp.spin)) * cp.size);
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = '#facc15';
-        ctx.strokeStyle = '#b45309';
+        ctx.fillStyle = '#e5b84b';
+        ctx.strokeStyle = '#855814';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.ellipse(cp.x, cp.y, rx, cp.size, 0, 0, Math.PI * 2);
@@ -823,15 +1064,15 @@ export const ScaleCanvas: React.FC<ScaleCanvasProps> = ({
       />
 
       {reaperSpeech && (
-        <div className="pointer-events-none absolute top-2.5 left-1/2 -translate-x-1/2 max-w-md px-4 py-1.5 bg-[#0e0b13]/85 border border-amber-800/40 text-center shadow-lg">
-          <p className="text-xs sm:text-sm text-amber-100/90 italic tracking-wide">
+        <div className="pointer-events-none absolute top-2.5 left-1/2 -translate-x-1/2 max-w-md px-4 py-1.5 bg-[#0c0a0f]/80 border border-stone-800/80 text-center">
+          <p className="text-xs sm:text-sm text-[#dcd4c6] tracking-wide">
             「{reaperSpeech}」
           </p>
         </div>
       )}
 
       {interactionMode === 'SELECT_PAN_TWEEZERS' && (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-sky-950/90 border border-sky-400/70 text-sky-100 text-xs font-semibold shadow-lg">
+        <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-stone-900/95 border border-stone-600 text-stone-100 text-xs font-semibold shadow-lg">
           真鍮のピンセット：右皿のおもりをクリックして手札に戻す
         </div>
       )}
